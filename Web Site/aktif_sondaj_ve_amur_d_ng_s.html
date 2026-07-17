@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sondaj Simülatörü ve Çamur Döngüsü</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #3b82f6; width: 100%; margin-bottom: 0.5rem; cursor: pointer; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Aktif Sondaj & Kapalı Çamur Döngüsü (Circulation Loop)</h1>
+            <p class="text-slate-400 text-sm">Kırıntı Taşıma Fiziği, Elek (Shaker) Ayrıştırması, Havuz Emişi ve Hızlı Boru Ekleme</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-[520px] overflow-y-auto custom-scrollbar">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2 sticky top-0 bg-slate-800 z-10">Sondaj Parametreleri</h2>
+                    
+                    <div class="mb-5">
+                        <div class="slider-label text-blue-400"><span>Çamur Pompası (GPM)</span> <span id="val-gpm" class="font-mono">800 gal/dk</span></div>
+                        <input type="range" id="slider-gpm" min="0" max="1500" step="50" value="800">
+                        <div class="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            <strong>Etkisi:</strong> Çamur akış hızını belirler. Artırmak kırıntıları daha iyi taşır ama sürtünmeden dolayı ECD'yi (Kuyu Dibi Basıncı) yükseltir.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-5">
+                        <div class="slider-label text-emerald-400"><span>Rotary Hızı (RPM)</span> <span id="val-rpm" class="font-mono">120 dev/dk</span></div>
+                        <input type="range" id="slider-rpm" min="0" max="250" step="10" value="120" style="accent-color: #10b981;">
+                        <div class="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            <strong>Etkisi:</strong> Matkabın dönüş hızıdır. Artırmak delme hızını (ROP) artırır ancak matkabı çabuk aşındırır.
+                        </div>
+                    </div>
+
+                    <div class="mb-5">
+                        <div class="slider-label text-amber-400"><span>Matkap Yükü (WOB)</span> <span id="val-wob" class="font-mono">25 klbs</span></div>
+                        <input type="range" id="slider-wob" min="0" max="60" step="5" value="25" style="accent-color: #f59e0b;">
+                        <div class="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            <strong>Etkisi:</strong> Matkaba binen ağırlıktır. Çok azı kayayı kesmez, çok fazlası matkabı sıkıştırır.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-purple-400"><span>Çamur Ağırlığı (MW)</span> <span id="val-mw" class="font-mono">10.5 ppg</span></div>
+                        <input type="range" id="slider-mw" min="8.3" max="16.0" step="0.1" value="10.5" style="accent-color: #a855f7;">
+                        <div class="text-[11px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            <strong>Etkisi:</strong> Kuyunun hidrostatik dengesidir. Yüksek MW kırıntıları iyi kaldırır ama kayayı çatlatıp (Losses) çamuru yeraltına kaçırabilir.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner grid grid-cols-2 gap-3">
+                    <div class="bg-slate-800 border border-emerald-700/50 p-2 rounded text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Delme Hızı (ROP)</div>
+                        <div id="val-rop" class="text-2xl font-bold text-emerald-400">0 ft/hr</div>
+                    </div>
+                    <div class="bg-slate-800 border border-purple-700/50 p-2 rounded text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Kuyu Dibi ECD</div>
+                        <div id="val-ecd" class="text-2xl font-bold text-purple-400">10.5 ppg</div>
+                    </div>
+                    <div class="bg-slate-800 border border-blue-700/50 p-2 rounded text-center col-span-2">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Kırıntı Taşıma Verimi (Transport Ratio)</div>
+                        <div class="w-full bg-slate-900 rounded-full h-3 mt-1 border border-slate-600 overflow-hidden relative">
+                            <div id="bar-transport" class="bg-blue-500 h-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div id="val-transport" class="text-xs font-bold text-blue-300 mt-1">0%</div>
+                    </div>
+                    <!-- YENİ DERİNLİK GÖSTERGESİ -->
+                    <div class="bg-slate-800 border border-slate-600 p-2 rounded text-center col-span-2 relative overflow-hidden">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Toplam Delinen Derinlik (MD)</div>
+                        <div id="val-depth" class="text-2xl font-bold text-white tracking-widest">12,450 ft</div>
+                        <div class="text-[9px] text-slate-500 mt-1">Hedef Derinlik (TD): 15,000 ft</div>
+                        <!-- İlerleme Çubuğu -->
+                        <div class="absolute bottom-0 left-0 h-1.5 bg-sky-500/80 transition-all duration-300" id="depth-progress" style="width: 83%"></div>
+                    </div>
+                </div>
+
+                <div id="status-box" class="bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all">
+                    SİSTEM HAZIR <br><span class="text-xs font-normal">Parametreleri girerek sondaja başlayın.</span>
+                </div>
+                
+            </div>
+
+            <!-- Sağ Panel: Canvas -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                
+                <div class="flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden flex-1">
+                    <canvas id="drillCanvas" width="1000" height="750" class="max-w-full h-auto rounded-lg"></canvas>
+                    
+                    <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                        <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Çamur Döngüsü Lejantı</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-4 bg-[#0ea5e9]"></span> Temiz Çamur (Pompa &rarr; Matkap)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-4 bg-[#854d0e]"></span> Kirli Çamur (Annulus &rarr; Elek)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-4 bg-[#1e293b] border border-slate-400"></span> Kaya Kırıntıları (Atık Çukuruna)</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drillCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slGPM = document.getElementById('slider-gpm');
+        const slRPM = document.getElementById('slider-rpm');
+        const slWOB = document.getElementById('slider-wob');
+        const slMW = document.getElementById('slider-mw');
+
+        // --- ULTRA ZOOM-OUT GEOMETRİSİ ---
+        const CX = 180;  // Kuyu ve kule (En Solda)
+        const SURF_Y = 320; 
+        const WELL_DEPTH = 700; 
+        
+        // Tesisler (Soldan Sağa Dizilim)
+        const SHAKER_X = 380;   // Elek (Flowline buraya dökülür)
+        const PIT_X = 360;      // Aktif Çamur Havuzu (Eleğin TAM ALTINDA)
+        const RESERVE_X = 520;  // Atık Kırıntı Çukuru (Eleğin SAĞINDA)
+        const PUMP_X = 720;     // Triplex Pompa (En Sağda)
+        
+        const PIPE_LENGTH = 150; 
+
+        // Fizik ve Durum Değişkenleri
+        let bitDepth = SURF_Y + PIPE_LENGTH + 50; 
+        let topDriveY = SURF_Y - PIPE_LENGTH - 40; 
+        let savedGPM = 800; let savedRPM = 120;
+        
+        let gpm = 800; let rpm = 120; let wob = 25; let mw = 10.5;
+        let ROP = 0; let ECD = 10.5; let transportRatio = 0; let pitLevel = 100;
+        
+        // YENİ DERİNLİK HEDEFLERİ
+        let totalDepth = 12450; 
+        const TARGET_TD = 15000;
+        
+        let state = 'idle'; // idle, drilling, circulating, packoff, losses, connection, td_reached
+        let connectionTimer = 0;
+        let animationTime = 0;
+        let cuttings = [];
+        let mudFlowOffset = 0; 
+        let cuttingsPileHeight = 0; 
+
+        // --- KUSURSUZ KIRIŞTI TAŞIMA FİZİĞİ ---
+        class Cutting {
+            constructor() {
+                this.x = CX + (Math.random()>0.5?1:-1) * (15 + Math.random()*10);
+                this.y = bitDepth;
+                this.state = 'annulus'; 
+                this.active = true;
+                this.slipVelocity = 3.5 - (mw * 0.15) + Math.random() * 0.5; 
+            }
+            update(annularVel) {
+                if(!this.active) return;
+                
+                if (this.state === 'annulus') {
+                    let netVel = annularVel - this.slipVelocity;
+                    this.y -= netVel; 
+                    
+                    if (this.y > bitDepth + 5) this.y = bitDepth + 5; 
+
+                    // Yüzeye ulaştıysa (Flowline başlangıcı)
+                    if (this.y < SURF_Y + 15) {
+                        this.state = 'flowline';
+                        this.x = CX + 30; 
+                        this.y = SURF_Y + 30; // Flowline merkez hizası
+                    }
+                } 
+                else if (this.state === 'flowline') {
+                    // Flowline boyunca yatay/eğimli ilerleyiş
+                    let speed = (gpm / 150) + 2;
+                    this.x += speed;
+                    
+                    // Eğim hesabı (CX+30'dan SHAKER_X'e doğru yokuş yukarı)
+                    let startY = SURF_Y + 30;
+                    let endY = SURF_Y - 40;
+                    let progress = (this.x - (CX + 30)) / (SHAKER_X - (CX + 30));
+                    this.y = startY + progress * (endY - startY);
+
+                    // Eleğe ulaştı
+                    if (this.x >= SHAKER_X) {
+                        this.state = 'shaker';
+                        this.x = SHAKER_X;
+                        this.y = SURF_Y - 40;
+                    }
+                }
+                else if (this.state === 'shaker') {
+                    // Elek üzerinde titreyerek kayma
+                    this.x += 2;
+                    this.y += 0.25; // Hafif aşağı eğim
+                    
+                    if (this.x > SHAKER_X + 80) { // Eleğin sonu
+                        this.state = 'falling';
+                    }
+                }
+                else if (this.state === 'falling') {
+                    // Yerçekimiyle Atık Çukuruna (Reserve Pit) serbest düşüş
+                    this.x += 1.5; // İleri doğru fırlama
+                    this.y += 6;   // Düşüş hızı
+                    
+                    if (this.y > SURF_Y + 80 - (cuttingsPileHeight/40)) {
+                        this.state = 'pile';
+                        this.active = false;
+                        cuttingsPileHeight += 1; // Dağı büyüt
+                        if (cuttingsPileHeight > 1200) cuttingsPileHeight = 1200; // Max tepe
+                    }
+                }
+            }
+            draw() {
+                if(!this.active) return;
+                ctx.fillStyle = (this.state === 'annulus' && this.y > SURF_Y + 100) ? '#1e293b' : '#020617'; 
+                ctx.fillRect(this.x, this.y, 6, 6); 
+            }
+        }
+
+        function calculatePhysics() {
+            if (state !== 'connection' && state !== 'td_reached') {
+                gpm = parseInt(slGPM.value);
+                rpm = parseInt(slRPM.value);
+                wob = parseInt(slWOB.value);
+                mw = parseFloat(slMW.value);
+            } else if (state === 'td_reached') {
+                // TD'ye ulaşınca ROP sıfırlanır, ama GPM kalabilir (sirkülasyon için)
+                gpm = parseInt(slGPM.value);
+                rpm = 0;
+                wob = 0;
+            }
+
+            document.getElementById('val-gpm').innerText = gpm + " gal/dk";
+            document.getElementById('val-rpm').innerText = rpm + " dev/dk";
+            document.getElementById('val-wob').innerText = wob + " klbs";
+
+            let annularVel = gpm / 150; 
+            ECD = mw + (gpm * 0.003);
+            document.getElementById('val-ecd').innerText = ECD.toFixed(2) + " ppg";
+
+            if (rpm > 0 && wob > 0 && state !== 'connection' && state !== 'packoff' && state !== 'td_reached') {
+                ROP = (wob * rpm) / 60 * (10 / mw); 
+            } else { ROP = 0; }
+            document.getElementById('val-rop').innerText = ROP.toFixed(1) + " ft/hr";
+
+            let averageSlipVel = 3.5 - (mw * 0.15);
+            transportRatio = annularVel <= 0 ? 0 : Math.max(0, Math.min(100, ((annularVel - averageSlipVel) / annularVel) * 100));
+            
+            document.getElementById('val-transport').innerText = transportRatio.toFixed(0) + "%";
+            document.getElementById('bar-transport').style.width = transportRatio + "%";
+            
+            let trBar = document.getElementById('bar-transport');
+            if(transportRatio < 30) trBar.className = "bg-red-500 h-full transition-all duration-300";
+            else if(transportRatio < 60) trBar.className = "bg-amber-500 h-full transition-all duration-300";
+            else trBar.className = "bg-emerald-500 h-full transition-all duration-300";
+
+            let statusBox = document.getElementById('status-box');
+
+            if (state === 'td_reached') {
+                statusBox.className = "bg-emerald-900/80 border border-emerald-400 p-4 rounded-xl text-emerald-100 text-sm font-semibold transition-all shadow-[0_0_15px_rgba(52,211,153,0.5)]";
+                statusBox.innerHTML = "🎯 HEDEF DERİNLİĞE (TD) ULAŞILDI! <br><span class='text-xs font-normal'>Kuyu başarıyla 15,000 ft'e delindi. Delme durduruldu. Çamur sirkülasyonu yaparak kuyudaki son kırıntıları temizleyin.</span>";
+                return annularVel;
+            }
+
+            if (state === 'connection') {
+                let cState = "";
+                let p1 = 20, p2 = 40, p3 = 70, p4 = 100, p5 = 120; // HIZLI
+                if (connectionTimer < p1) cState = "Slips oturuyor, boru sökülüyor...";
+                else if (connectionTimer < p2) cState = "Top Drive yukarı çekiliyor...";
+                else if (connectionTimer < p3) cState = "V-Door'dan yeni Stand geliyor...";
+                else if (connectionTimer < p4) cState = "Yeni boru vidalanıyor (Make-up)...";
+                else cState = "Slips alınıyor, sondaj başlıyor...";
+
+                statusBox.className = "bg-sky-900/50 border border-sky-500 p-4 rounded-xl text-sky-200 text-sm font-semibold transition-all";
+                statusBox.innerHTML = `🔧 BORU EKLENİYOR (CONNECTION) <br><span class='text-xs font-normal'>${cState}</span>`;
+                return 0; 
+            }
+
+            if (ECD > 14.0) {
+                state = 'losses'; pitLevel -= 0.8; 
+                statusBox.className = "bg-purple-900/80 border border-purple-500 p-4 rounded-xl text-purple-200 text-sm font-semibold transition-all animate-pulse";
+                statusBox.innerHTML = "🚨 LOST CIRCULATION (KAÇAK) <br><span class='text-xs font-normal'>ECD 14 ppg'yi aştı! Çamur formasyonu çatlatıp yeraltına kaçıyor. Havuz boşalıyor. GPM veya MW'yi düşürün.</span>";
+            } else if (ROP > 0 && transportRatio < 20 && gpm > 0) {
+                state = 'packoff';
+                statusBox.className = "bg-red-900/80 border border-red-500 p-4 rounded-xl text-red-200 text-sm font-semibold transition-all";
+                statusBox.innerHTML = "⚠️ PACK-OFF (KUYU TIKANMASI) <br><span class='text-xs font-normal'>GPM kırıntıları taşıyamıyor (Düşük debi veya yerçekimi). Kırıntılar matkabın üzerine çöktü! GPM'i artırın!</span>";
+            } else if (ROP > 0) {
+                state = 'drilling';
+                statusBox.className = "bg-emerald-900/50 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm font-semibold transition-all";
+                statusBox.innerHTML = "✅ SONDAJ AKTİF (Drilling Ahead) <br><span class='text-xs font-normal'>Matkap kayayı kesiyor, kırıntılar yüzeye başarıyla taşınıp elekten geçiyor.</span>";
+            } else if (gpm > 0) {
+                state = 'circulating';
+                statusBox.className = "bg-blue-900/50 border border-blue-500 p-4 rounded-xl text-blue-200 text-sm font-semibold transition-all";
+                statusBox.innerHTML = "🔄 SİRKÜLASYON (Bottoms Up) <br><span class='text-xs font-normal'>Sondaj durdu. Çamur devridaim yaparak kuyudaki kırıntıları havuzlara süpürüyor.</span>";
+            } else {
+                state = 'idle';
+                statusBox.className = "bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all";
+                statusBox.innerHTML = "POMPALAR KAPALI <br><span class='text-xs font-normal'>Sistem statik. Akış yok.</span>";
+            }
+
+            return annularVel;
+        }
+
+        function drawBackground() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Gökyüzü
+            let skyGrad = ctx.createLinearGradient(0,0,0,SURF_Y);
+            skyGrad.addColorStop(0, '#020617'); skyGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, canvas.width, SURF_Y);
+            
+            // Yeryüzü
+            ctx.fillStyle = '#451a03'; ctx.fillRect(0, SURF_Y, canvas.width, canvas.height - SURF_Y);
+            ctx.fillStyle = '#78350f'; ctx.fillRect(0, SURF_Y + 150, canvas.width, 100);
+            ctx.fillStyle = '#713f12'; ctx.fillRect(0, SURF_Y + 300, canvas.width, 200);
+
+            // Kuyu
+            ctx.fillStyle = '#64748b'; ctx.fillRect(CX - 40, SURF_Y, 80, 100); 
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(CX - 30, SURF_Y, 60, canvas.height - SURF_Y); 
+            
+            // Kule Zemini (Rig Floor)
+            ctx.fillStyle = '#475569'; ctx.fillRect(CX - 120, SURF_Y - 20, 240, 20); 
+            ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(CX - 100, SURF_Y - 20); ctx.lineTo(CX - 120, SURF_Y); ctx.lineTo(CX - 80, SURF_Y); ctx.fill(); ctx.beginPath(); ctx.moveTo(CX + 100, SURF_Y - 20); ctx.lineTo(CX + 120, SURF_Y); ctx.lineTo(CX + 80, SURF_Y); ctx.fill(); 
+
+            // Kule (Derrick)
+            ctx.fillStyle = '#cbd5e1'; 
+            ctx.beginPath(); ctx.moveTo(CX - 60, SURF_Y - 20); ctx.lineTo(CX + 60, SURF_Y - 20); ctx.lineTo(CX + 15, 30); ctx.lineTo(CX - 15, 30); ctx.fill();
+            ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.moveTo(CX - 50, SURF_Y - 20); ctx.lineTo(CX + 50, SURF_Y - 20); ctx.lineTo(CX + 5, 40); ctx.lineTo(CX - 5, 40); ctx.fill();
+            
+            // Çapraz çelik gergiler
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2;
+            for(let y=SURF_Y-20; y>40; y-=40) {
+                ctx.beginPath(); ctx.moveTo(CX - 50 + (SURF_Y-y)*0.15, y); ctx.lineTo(CX + 50 - (SURF_Y-(y-40))*0.15, y-40); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(CX + 50 - (SURF_Y-y)*0.15, y); ctx.lineTo(CX - 50 + (SURF_Y-(y-40))*0.15, y-40); ctx.stroke();
+            }
+        }
+
+        function drawSurfaceEquipment() {
+            // --- 1. AKTİF ÇAMUR HAVUZU ---
+            ctx.fillStyle = '#334155'; ctx.fillRect(PIT_X, SURF_Y, 150, 90); 
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(PIT_X + 5, SURF_Y + 5, 140, 80); 
+            
+            let mudLevelH = (pitLevel / 100) * 70;
+            ctx.fillStyle = '#0ea5e9'; 
+            ctx.fillRect(PIT_X + 5, SURF_Y + 85 - mudLevelH, 140, mudLevelH);
+            ctx.fillStyle = '#fff'; ctx.font="12px Arial font-bold"; ctx.fillText("ÇAMUR HAVUZU", PIT_X + 25, SURF_Y + 110);
+
+            ctx.fillStyle = '#475569'; ctx.fillRect(PIT_X + 40, SURF_Y - 10, 8, 50); ctx.fillRect(PIT_X + 100, SURF_Y - 10, 8, 50); 
+            ctx.save(); ctx.translate(PIT_X + 44, SURF_Y + 40); ctx.rotate(animationTime*5); ctx.fillRect(-15, -2, 30, 4); ctx.restore(); 
+            ctx.save(); ctx.translate(PIT_X + 104, SURF_Y + 40); ctx.rotate(animationTime*5); ctx.fillRect(-15, -2, 30, 4); ctx.restore();
+
+            // --- 2. ATIK ÇUKURU ---
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(RESERVE_X, SURF_Y, 100, 90); 
+            ctx.fillStyle = '#fff'; ctx.fillText("ATIK ÇUKURU", RESERVE_X + 10, SURF_Y + 110);
+            
+            let h = cuttingsPileHeight / 30; 
+            ctx.fillStyle = '#292524'; 
+            ctx.beginPath(); ctx.moveTo(RESERVE_X, SURF_Y + 90); ctx.lineTo(RESERVE_X + 50, SURF_Y + 90 - h); ctx.lineTo(RESERVE_X + 100, SURF_Y + 90); ctx.fill();
+
+            // --- 3. SHALE SHAKER ---
+            let shakerY = SURF_Y - 40 + (gpm > 0 && state !== 'connection' ? Math.sin(animationTime*50)*2 : 0); 
+            ctx.fillStyle = '#64748b'; ctx.fillRect(SHAKER_X, shakerY, 80, 20); 
+            ctx.fillStyle = '#cbd5e1'; 
+            ctx.beginPath(); ctx.moveTo(SHAKER_X, shakerY); ctx.lineTo(SHAKER_X + 80, shakerY + 20); ctx.lineTo(SHAKER_X + 80, shakerY + 25); ctx.lineTo(SHAKER_X, shakerY + 5); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.font="11px Arial font-bold"; ctx.fillText("SHAKER (Elek)", SHAKER_X - 10, shakerY - 10);
+
+            if (gpm > 0 && state !== 'connection') {
+                ctx.fillStyle = 'rgba(14, 165, 233, 0.5)'; 
+                for(let i=0; i<8; i++) {
+                    let dripX = SHAKER_X + 10 + i*8;
+                    let dripY = shakerY + 15 + ((animationTime*100 + i*20) % 50);
+                    if (dripY < SURF_Y + 85 - mudLevelH) ctx.fillRect(dripX, dripY, 3, 12);
+                }
+            }
+
+            // --- 4. FLOWLINE ---
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 14; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.moveTo(CX + 30, SURF_Y + 30); ctx.lineTo(SHAKER_X, SURF_Y - 30); ctx.stroke();
+            
+            if (gpm > 0 && state !== 'connection') {
+                ctx.strokeStyle = '#854d0e'; ctx.lineWidth = 8; ctx.setLineDash([15, 15]); ctx.lineDashOffset = -mudFlowOffset*2;
+                ctx.beginPath(); ctx.moveTo(CX + 30, SURF_Y + 30); ctx.lineTo(SHAKER_X, SURF_Y - 30); ctx.stroke(); ctx.setLineDash([]);
+                ctx.fillStyle = '#fff'; ctx.font="11px Arial"; ctx.fillText("Flowline", CX + 70, SURF_Y + 15);
+            }
+
+            // --- 5. TRIPLEX PUMPS & STANDPIPE ---
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 12; 
+            ctx.beginPath(); ctx.moveTo(PIT_X + 140, SURF_Y + 60); ctx.lineTo(PUMP_X, SURF_Y + 60); ctx.stroke();
+
+            ctx.fillStyle = '#334155'; ctx.fillRect(PUMP_X, SURF_Y + 30, 100, 60);
+            ctx.fillStyle = '#fff'; ctx.font="14px Arial font-bold"; ctx.fillText("TRIPLEX POMPA", PUMP_X + 5, SURF_Y + 20);
+            
+            ctx.fillStyle = '#cbd5e1';
+            let pOffset1 = gpm > 0 && state !== 'connection' ? Math.sin(animationTime * (gpm/100)) * 8 : 0;
+            let pOffset2 = gpm > 0 && state !== 'connection' ? Math.sin(animationTime * (gpm/100) + Math.PI*0.6) * 8 : 0;
+            let pOffset3 = gpm > 0 && state !== 'connection' ? Math.sin(animationTime * (gpm/100) + Math.PI*1.2) * 8 : 0;
+            ctx.fillRect(PUMP_X - 15 + pOffset1, SURF_Y + 40, 15, 8); 
+            ctx.fillRect(PUMP_X - 15 + pOffset2, SURF_Y + 55, 15, 8);
+            ctx.fillRect(PUMP_X - 15 + pOffset3, SURF_Y + 70, 15, 8);
+
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 12;
+            ctx.beginPath(); ctx.moveTo(PUMP_X + 50, SURF_Y + 30); ctx.lineTo(PUMP_X + 50, SURF_Y - 100); ctx.lineTo(CX + 100, SURF_Y - 100); ctx.lineTo(CX + 100, SURF_Y - 250); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font="12px Arial"; ctx.fillText("Standpipe", CX + 110, SURF_Y - 180);
+            
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 14;
+            ctx.beginPath(); ctx.moveTo(CX + 100, SURF_Y - 250);
+            ctx.quadraticCurveTo(CX + 150, (SURF_Y - 250 + topDriveY)/2, CX + 20, topDriveY + 15); ctx.stroke();
+            
+            if (gpm > 0 && state !== 'connection') {
+                ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 6; ctx.setLineDash([12, 12]); ctx.lineDashOffset = -mudFlowOffset*2;
+                ctx.beginPath(); ctx.moveTo(CX + 100, SURF_Y - 250); ctx.quadraticCurveTo(CX + 150, (SURF_Y - 250 + topDriveY)/2, CX + 20, topDriveY + 15); ctx.stroke(); ctx.setLineDash([]);
+            }
+        }
+
+        function drawNewPipeAnimation(timer) {
+            let p1 = 20, p2 = 40, p3 = 70, p4 = 100; 
+            
+            if (timer >= p2 && timer < p3) {
+                let progress = (timer - p2) / (p3 - p2);
+                let startX = CX + 150; let startY = SURF_Y - 20; 
+                let endX = CX; let endY = SURF_Y - 20 - (PIPE_LENGTH/2); 
+
+                let curX = startX + (endX - startX) * progress;
+                let curY = startY + (endY - startY) * progress;
+                let curAngle = (Math.PI / 3) * (1 - progress); 
+
+                ctx.save();
+                ctx.translate(curX, curY);
+                ctx.rotate(curAngle);
+                
+                ctx.fillStyle = '#eab308'; ctx.fillRect(-8, -PIPE_LENGTH/2, 16, PIPE_LENGTH);
+                ctx.fillStyle = '#b45309'; ctx.fillRect(-10, -PIPE_LENGTH/2, 20, 20); ctx.fillRect(-10, PIPE_LENGTH/2 - 20, 20, 20);
+                
+                ctx.restore();
+            } else if (timer >= p3 && timer <= 120) {
+                ctx.fillStyle = '#eab308'; ctx.fillRect(CX - 8, topDriveY + 50, 16, PIPE_LENGTH);
+                ctx.fillStyle = '#b45309'; ctx.fillRect(CX - 10, topDriveY + 50, 20, 20); ctx.fillRect(CX - 10, topDriveY + 50 + PIPE_LENGTH - 20, 20, 20);
+            }
+        }
+
+        function drawDrillstring() {
+            if (state === 'connection') {
+                ctx.fillStyle = '#ef4444'; 
+                ctx.beginPath(); ctx.moveTo(CX - 20, SURF_Y - 20); ctx.lineTo(CX - 8, SURF_Y - 20); ctx.lineTo(CX - 8, SURF_Y - 5); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(CX + 20, SURF_Y - 20); ctx.lineTo(CX + 8, SURF_Y - 20); ctx.lineTo(CX + 8, SURF_Y - 5); ctx.fill();
+            }
+
+            ctx.fillStyle = '#ef4444'; ctx.fillRect(CX - 35, topDriveY, 70, 50); 
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(CX - 15, topDriveY + 50, 30, 20); 
+            ctx.fillStyle = '#fff'; ctx.font="14px Arial font-bold"; ctx.textAlign="center"; ctx.fillText("TOP", CX, topDriveY + 20); ctx.fillText("DRIVE", CX, topDriveY + 35); ctx.textAlign="left";
+
+            let stringStartY = (state === 'connection') ? SURF_Y - 30 : topDriveY + 50;
+            
+            ctx.fillStyle = '#eab308';
+            ctx.fillRect(CX - 8, stringStartY, 16, bitDepth - stringStartY);
+            
+            ctx.fillStyle = '#b45309';
+            let firstJointOffset = (topDriveY - (SURF_Y - 40)) % PIPE_LENGTH;
+            if (firstJointOffset > 0) firstJointOffset -= PIPE_LENGTH;
+            for(let y = stringStartY - firstJointOffset; y < bitDepth - 60; y += PIPE_LENGTH) {
+                if (y >= stringStartY) ctx.fillRect(CX - 10, y, 20, 20);
+            }
+
+            if (state === 'connection') drawNewPipeAnimation(connectionTimer);
+
+            // BHA & Matkap
+            ctx.fillStyle = '#94a3b8'; ctx.fillRect(CX - 16, bitDepth - 60, 32, 55);
+            ctx.save(); ctx.translate(CX, bitDepth - 5); 
+            if (rpm > 0 && state !== 'connection' && state !== 'packoff' && state !== 'td_reached') ctx.rotate(animationTime * (rpm/15)); 
+            ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.lineTo(0, 20); ctx.fill(); 
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(-12, 5, 5, 5); ctx.fillRect(7, 5, 5, 5);
+            ctx.restore();
+
+            // Çamur Fışkırması
+            if (gpm > 0 && state !== 'connection') {
+                ctx.fillStyle = '#0ea5e9'; 
+                ctx.beginPath(); ctx.moveTo(CX, bitDepth + 15); ctx.lineTo(CX - 20, bitDepth + 35); ctx.lineTo(CX + 20, bitDepth + 35); ctx.fill();
+            }
+
+            // Annulus İçi 
+            ctx.fillStyle = 'rgba(161, 98, 7, 0.4)'; 
+            ctx.fillRect(CX - 30, SURF_Y + 10, 60, bitDepth - SURF_Y - 10);
+            
+            if (gpm > 0 && state !== 'connection') {
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                let arrowY = SURF_Y + 50 + (mudFlowOffset % 100);
+                ctx.beginPath(); ctx.moveTo(CX - 20, arrowY); ctx.lineTo(CX - 25, arrowY + 15); ctx.lineTo(CX - 15, arrowY + 15); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(CX + 20, arrowY + 50); ctx.lineTo(CX + 25, arrowY + 65); ctx.lineTo(CX + 15, arrowY + 65); ctx.fill();
+            }
+        }
+
+        function drawConnectionsOverlay() {
+            if (state === 'connection') {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0,0,canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#38bdf8'; ctx.font="bold 30px Arial"; ctx.textAlign="center";
+                ctx.fillText("MAKING CONNECTION...", canvas.width/2, canvas.height/2);
+                
+                ctx.fillStyle = '#fff'; ctx.font="16px Arial";
+                ctx.fillText("Top Drive serbest bırakıldı, yeni boru (Stand) kuleye çekiliyor.", canvas.width/2, canvas.height/2 + 30);
+                
+                ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4; ctx.strokeRect(canvas.width/2 - 150, canvas.height/2 + 60, 300, 15);
+                ctx.fillStyle = '#38bdf8'; ctx.fillRect(canvas.width/2 - 150, canvas.height/2 + 60, (connectionTimer/120)*300, 15);
+                ctx.textAlign="left"; 
+            }
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            if (gpm > 0 && state !== 'connection') mudFlowOffset += (gpm / 100); 
+
+            let annularVel = calculatePhysics();
+
+            if (state === 'drilling') {
+                let moveAmount = ROP * 0.02; 
+                bitDepth += moveAmount;
+                topDriveY += moveAmount;
+                totalDepth += moveAmount;
+
+                // Derinlik Güncellemesi (UI)
+                document.getElementById('val-depth').innerText = Math.floor(totalDepth).toLocaleString() + " ft";
+                let prog = (totalDepth / TARGET_TD) * 100;
+                document.getElementById('depth-progress').style.width = Math.min(prog, 100) + "%";
+
+                // HEDEF DERİNLİK KONTROLÜ (TD)
+                if (totalDepth >= TARGET_TD) {
+                    totalDepth = TARGET_TD;
+                    state = 'td_reached';
+                } else {
+                    // Kaydırma efekti (Matkap dipten çıkmasın)
+                    if (bitDepth > WELL_DEPTH - 40) {
+                        bitDepth = WELL_DEPTH - 40; 
+                        cuttings.forEach(c => {
+                            if (c.state === 'annulus') c.y -= moveAmount; 
+                        }); 
+                    }
+
+                    // Boru ekleme kontrolü
+                    if (topDriveY > SURF_Y - 80) {
+                        state = 'connection';
+                        connectionTimer = 0;
+                        savedGPM = slGPM.value; slGPM.value = 0; 
+                        savedRPM = slRPM.value; slRPM.value = 0; 
+                    }
+                }
+            }
+
+            if (state === 'connection') {
+                connectionTimer++;
+                let p1 = 20, p2 = 40, p3 = 70, p4 = 100, p5 = 120; 
+
+                if (connectionTimer > p1 && connectionTimer < p2) {
+                    topDriveY -= 10; 
+                    if (topDriveY < SURF_Y - PIPE_LENGTH - 80) topDriveY = SURF_Y - PIPE_LENGTH - 80;
+                } else if (connectionTimer > p3 && connectionTimer < p4) {
+                    topDriveY += 3; 
+                    if (topDriveY > SURF_Y - PIPE_LENGTH - 40) topDriveY = SURF_Y - PIPE_LENGTH - 40;
+                } else if (connectionTimer > p5) {
+                    state = 'idle';
+                    slGPM.value = savedGPM; 
+                    slRPM.value = savedRPM;
+                }
+            }
+
+            // Kırıntı (Cuttings) Üretimi
+            if (state === 'drilling' && Math.random() < ROP / 20) {
+                let c = new Cutting();
+                cuttings.push(c);
+            }
+
+            drawBackground();
+            drawSurfaceEquipment();
+            drawDrillstring();
+
+            // Kırıntıları Güncelle ve Çiz
+            cuttings.forEach(c => { c.update(annularVel); c.draw(); });
+            cuttings = cuttings.filter(c => c.active);
+
+            drawConnectionsOverlay();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        slGPM.addEventListener('input', calculatePhysics);
+        slRPM.addEventListener('input', calculatePhysics);
+        slWOB.addEventListener('input', calculatePhysics);
+        slMW.addEventListener('input', calculatePhysics);
+
+        calculatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

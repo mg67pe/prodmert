@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Well Control (Kick) Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .control-btn { transition: all 0.2s; }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .control-btn:not(:disabled):hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Well Control (Kick) & Kill Operations</h1>
+            <p class="text-slate-400 text-sm">Drilling Engineering: Boyle's Law, Shut-in Pressures, and Kill Methods</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <div class="lg:col-span-5 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-600 pb-2">Live Well Parameters</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="bg-slate-900 border border-slate-700 p-3 rounded text-center">
+                            <div class="text-xs text-slate-400 mb-1">Drill Pipe (SIDPP)</div>
+                            <div id="val-sidpp" class="text-xl font-bold text-sky-400">0 psi</div>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-700 p-3 rounded text-center">
+                            <div class="text-xs text-slate-400 mb-1">Annulus (SICP)</div>
+                            <div id="val-sicp" class="text-xl font-bold text-amber-400">0 psi</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-slate-900 border border-slate-700 p-3 rounded text-center mb-4">
+                        <div class="text-xs text-slate-400 mb-1">Bottom Hole (BHP) vs Formation (Pf)</div>
+                        <div id="val-bhp" class="text-lg font-bold text-emerald-400">Overbalanced (BHP > Pf)</div>
+                    </div>
+
+                    <div class="flex flex-col gap-3 mt-6 border-t border-slate-600 pt-4">
+                        <button onclick="triggerKick()" id="btn-kick" class="control-btn py-3 bg-red-600 text-white rounded-lg font-bold shadow-lg">
+                            1. Take a Kick (Gas Influx)
+                        </button>
+                        <button onclick="closeBOP()" id="btn-bop" disabled class="control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold">
+                            2. Shut-in Well (Close BOP)
+                        </button>
+                        <button onclick="migrateGas()" id="btn-migrate" disabled class="control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold text-sm hidden">
+                            3a. Migrate Gas (Volumetric)
+                        </button>
+                        
+                        <div id="kill-methods" class="flex flex-col gap-2 hidden mt-2">
+                            <h3 class="text-xs font-bold text-slate-400 uppercase border-b border-slate-600 pb-1">Select Kill Method</h3>
+                            <button onclick="startKill('drillers')" class="control-btn py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-sm shadow">
+                                3b. Driller's Method (2 Circulations)
+                            </button>
+                            <button onclick="startKill('wait_weight')" class="control-btn py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold text-sm shadow">
+                                3c. Wait & Weight (Engineer's)
+                            </button>
+                            <button onclick="startKill('concurrent')" class="control-btn py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-bold text-sm shadow">
+                                3d. Concurrent Method
+                            </button>
+                        </div>
+
+                        <button onclick="resetSim()" class="control-btn py-2 bg-slate-700 hover:bg-slate-500 text-white rounded-lg font-bold mt-2">
+                            Reset System
+                        </button>
+                    </div>
+                </div>
+
+                <div id="status-box" class="bg-emerald-900/50 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm">
+                    <strong>DRILLING AHEAD:</strong> Everything is normal. Hydrostatic pressure exceeds formation pressure. Well is secure.
+                </div>
+                
+            </div>
+
+            <div class="lg:col-span-7 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-4 relative">
+                <canvas id="wellCanvas" width="400" height="650" class="max-w-full h-auto"></canvas>
+                
+                <div class="absolute top-6 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl">
+                    <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#3b82f6]"></span> Original Mud</div>
+                    <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#a855f7]"></span> Kill Weight Mud (KWM)</div>
+                    <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#0ea5e9]"></span> Concurrent Mud</div>
+                    <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#ef4444] rounded-full"></span> Formation Gas (Kick)</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#f59e0b]"></span> BOP Rams</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('wellCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let state = 'drilling';
+        let animationId;
+
+        const CX = canvas.width / 2;
+        const SURF_Y = 100;
+        const WELL_DEPTH = 600;
+        
+        let gasY = WELL_DEPTH;
+        let gasLength = 0;
+        let killMudDP = SURF_Y;
+        let killMudAnn = WELL_DEPTH;
+        
+        let killPhase = 0;
+        let activeMethod = '';
+
+        let P_form = 4500;
+        let SIDPP = 0;
+        let SICP = 0;
+        let BHP = 4800;
+
+        const btnKick = document.getElementById('btn-kick');
+        const btnBop = document.getElementById('btn-bop');
+        const btnMigrate = document.getElementById('btn-migrate');
+        const statusBox = document.getElementById('status-box');
+
+        function triggerKick() {
+            if (state !== 'drilling') return;
+            state = 'kick';
+            gasLength = 20;
+            gasY = WELL_DEPTH - gasLength;
+            BHP = 4400;
+            
+            btnKick.disabled = true; btnKick.className = "control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold";
+            btnBop.disabled = false; btnBop.className = "control-btn py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-lg animate-pulse";
+            
+            statusBox.className = "bg-red-900/50 border border-red-500 p-4 rounded-xl text-red-200 text-sm";
+            statusBox.innerHTML = "<strong>🚨 KICK DETECTED!</strong> Mud weight is insufficient. Gas influx from formation. Shut-in the BOP immediately!";
+        }
+
+        function closeBOP() {
+            if (state !== 'kick') return;
+            state = 'shutin';
+            
+            SIDPP = 300; 
+            SICP = 450;
+            BHP = P_form;
+            
+            btnBop.disabled = true; btnBop.className = "control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold";
+            btnMigrate.disabled = false; btnMigrate.className = "control-btn py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold text-sm shadow-lg";
+            btnMigrate.classList.remove('hidden');
+            
+            document.getElementById('kill-methods').classList.remove('hidden');
+            
+            statusBox.className = "bg-amber-900/50 border border-amber-500 p-4 rounded-xl text-amber-200 text-sm";
+            statusBox.innerHTML = "<strong>🔒 WELL SHUT-IN:</strong> BOP Rams closed. Pressures recorded (SICP > SIDPP). Choose to migrate gas or select a Kill Method.";
+        }
+
+        function migrateGas() {
+            if (state !== 'shutin') return;
+            state = 'migrating';
+            
+            btnMigrate.disabled = true; btnMigrate.className = "control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold text-sm";
+            document.getElementById('kill-methods').classList.add('hidden');
+            
+            statusBox.className = "bg-red-900/80 border border-red-500 p-4 rounded-xl text-red-100 text-sm";
+            statusBox.innerHTML = "<strong>⚠️ GAS MIGRATION (BOYLE'S LAW):</strong> Gas rises in a closed well. Inability to expand causes surface pressure (SICP) to spike! High risk of blowout.";
+        }
+
+        function startKill(method) {
+            if (state !== 'shutin') return;
+            state = 'killing';
+            activeMethod = method;
+            killPhase = 1;
+            
+            btnMigrate.classList.add('hidden');
+            document.getElementById('kill-methods').classList.add('hidden');
+            
+            if (method === 'drillers') {
+                statusBox.className = "bg-emerald-900/50 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm";
+                statusBox.innerHTML = "<strong>💉 DRILLER'S METHOD (Circ 1):</strong> Pumping original mud to circulate the gas out. SIDPP is kept constant. SICP will rise until gas vents.";
+            } else if (method === 'wait_weight') {
+                statusBox.className = "bg-purple-900/50 border border-purple-500 p-4 rounded-xl text-purple-200 text-sm";
+                statusBox.innerHTML = "<strong>💉 WAIT & WEIGHT METHOD:</strong> Pumping Kill Weight Mud (KWM) immediately. Gas is pushed out as KWM fills the drill pipe. Keeps SICP lower.";
+            } else if (method === 'concurrent') {
+                statusBox.className = "bg-sky-900/50 border border-sky-500 p-4 rounded-xl text-sky-200 text-sm";
+                statusBox.innerHTML = "<strong>💉 CONCURRENT METHOD:</strong> Mud weight is gradually increased while pumping. Very complex to control in reality, but actively kills the well.";
+            }
+        }
+
+        function resetSim() {
+            state = 'drilling';
+            gasY = WELL_DEPTH;
+            gasLength = 0;
+            killMudDP = SURF_Y;
+            killMudAnn = WELL_DEPTH;
+            killPhase = 0;
+            activeMethod = '';
+            
+            SIDPP = 0; SICP = 0; BHP = 4800;
+
+            btnKick.disabled = false; btnKick.className = "control-btn py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold shadow-lg";
+            btnBop.disabled = true; btnBop.className = "control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold";
+            btnMigrate.disabled = true; btnMigrate.className = "control-btn py-3 bg-slate-600 text-slate-400 rounded-lg font-bold text-sm hidden";
+            
+            document.getElementById('kill-methods').classList.add('hidden');
+            
+            statusBox.className = "bg-emerald-900/50 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm";
+            statusBox.innerHTML = "<strong>DRILLING AHEAD:</strong> Everything is normal. Hydrostatic pressure exceeds formation pressure. Well is secure.";
+        }
+
+        function drawBackground() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Formation
+            ctx.fillStyle = '#451a03'; ctx.fillRect(0, SURF_Y, canvas.width, canvas.height - SURF_Y);
+            ctx.fillStyle = '#713f12'; ctx.fillRect(0, WELL_DEPTH - 80, canvas.width, 100);
+
+            // Casing
+            ctx.fillStyle = '#64748b'; ctx.fillRect(CX - 50, SURF_Y, 100, WELL_DEPTH - SURF_Y);
+            ctx.fillStyle = '#94a3b8'; ctx.fillRect(CX - 40, SURF_Y, 80, WELL_DEPTH - SURF_Y);
+            
+            // Original Mud in Annulus
+            ctx.fillStyle = '#3b82f6'; ctx.fillRect(CX - 30, SURF_Y, 60, WELL_DEPTH - SURF_Y);
+
+            // Wellhead / BOP Body
+            ctx.fillStyle = '#475569'; ctx.fillRect(CX - 60, SURF_Y - 20, 120, 20);
+            ctx.fillStyle = '#b91c1c'; ctx.fillRect(CX - 35, SURF_Y - 80, 70, 60);
+            
+            // Drill Pipe
+            ctx.fillStyle = '#cbd5e1'; ctx.fillRect(CX - 10, SURF_Y - 100, 20, WELL_DEPTH - SURF_Y + 100);
+            ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(CX-15, WELL_DEPTH); ctx.lineTo(CX+15, WELL_DEPTH); ctx.lineTo(CX, WELL_DEPTH+15); ctx.fill();
+
+            // BOP Rams (Amber color when closed)
+            ctx.fillStyle = '#f59e0b';
+            if (state === 'shutin' || state === 'migrating' || state === 'killing' || state === 'killed') {
+                ctx.fillRect(CX - 45, SURF_Y - 60, 35, 20);
+                ctx.fillRect(CX + 10, SURF_Y - 60, 35, 20);
+                ctx.fillStyle = '#94a3b8'; ctx.fillRect(CX + 35, SURF_Y - 60, 50, 10); // Choke line out
+            } else {
+                ctx.fillRect(CX - 60, SURF_Y - 60, 20, 20);
+                ctx.fillRect(CX + 40, SURF_Y - 60, 20, 20);
+            }
+        }
+
+        function drawFluids() {
+            if (activeMethod === 'concurrent') {
+                ctx.fillStyle = '#0ea5e9'; // Sky blue for concurrent gradual mud
+            } else {
+                ctx.fillStyle = '#a855f7'; // Purple for Kill Weight Mud
+            }
+            
+            // Kill Mud in Drill Pipe
+            if (killMudDP > SURF_Y) {
+                ctx.fillRect(CX - 8, SURF_Y, 16, killMudDP - SURF_Y);
+            }
+            
+            // Kill Mud in Annulus
+            if (killMudAnn < WELL_DEPTH) {
+                ctx.fillRect(CX - 30, killMudAnn, 20, WELL_DEPTH - killMudAnn);
+                ctx.fillRect(CX + 10, killMudAnn, 20, WELL_DEPTH - killMudAnn);
+            }
+
+            // Gas Bubble
+            if (gasLength > 0 && gasY > SURF_Y - 50) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.8)';
+                ctx.fillRect(CX - 30, gasY, 20, gasLength);
+                ctx.fillRect(CX + 10, gasY, 20, gasLength);
+                
+                ctx.fillStyle = '#fff';
+                for(let i=0; i<5; i++) {
+                    ctx.beginPath(); ctx.arc(CX - 20, gasY + Math.random()*gasLength, 2, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(CX + 20, gasY + Math.random()*gasLength, 2, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        function updatePhysics() {
+            if (state === 'migrating') {
+                if (gasY > SURF_Y) {
+                    gasY -= 1;
+                    gasLength += 0.2; 
+                    SICP += 2;
+                }
+            } 
+            else if (state === 'killing') {
+                if (activeMethod === 'drillers') {
+                    if (killPhase === 1) {
+                        // Circulate gas out with original mud
+                        if (gasY > SURF_Y) {
+                            gasY -= 2.5;
+                            gasLength += 0.3; // Expansion due to Boyle's law
+                            SICP = Math.min(800, SICP + 1); // SICP rises
+                        } else {
+                            gasLength = Math.max(0, gasLength - 5);
+                            if (gasLength === 0) {
+                                killPhase = 2; // Gas out, start KWM
+                                SICP = SIDPP; // Equalized at FCP
+                                statusBox.innerHTML = "<strong>💉 DRILLER'S METHOD (Circ 2):</strong> Gas is out! Now pumping Kill Weight Mud (KWM) to kill the well. SIDPP will drop.";
+                            }
+                        }
+                    } else if (killPhase === 2) {
+                        // Pump KWM down DP
+                        if (killMudDP < WELL_DEPTH) {
+                            killMudDP += 2.5;
+                            SIDPP = Math.max(0, SIDPP - 1.2);
+                        } else if (killMudAnn > SURF_Y) {
+                            killMudAnn -= 2.5;
+                            SICP = Math.max(0, SICP - 1.2);
+                        } else {
+                            completeKill();
+                        }
+                    }
+                } 
+                else if (activeMethod === 'wait_weight') {
+                    // Pump KWM immediately
+                    if (killMudDP < WELL_DEPTH) {
+                        killMudDP += 2.5;
+                        SIDPP = Math.max(0, SIDPP - 1.2); // SIDPP drops immediately
+                        
+                        // Gas pushed up annulus
+                        gasY -= 2.5;
+                        if (gasY > SURF_Y) { gasLength += 0.2; SICP = Math.min(650, SICP + 0.5); } // SICP rises less than Driller's
+                    } else if (killMudAnn > SURF_Y) {
+                        killMudAnn -= 2.5;
+                        if (gasY > killMudAnn - gasLength) gasY = killMudAnn - gasLength;
+                        
+                        if (gasY <= SURF_Y) {
+                            gasLength = Math.max(0, gasLength - 4);
+                            SICP = Math.max(0, SICP - 2);
+                        }
+                    } else {
+                        completeKill();
+                    }
+                }
+                else if (activeMethod === 'concurrent') {
+                    // Pump gradient mud immediately
+                    if (killMudDP < WELL_DEPTH) {
+                        killMudDP += 2.5;
+                        SIDPP = Math.max(0, SIDPP - 0.6); // Drops slower as density gradually increases
+                        
+                        gasY -= 2.5;
+                        if (gasY > SURF_Y) { gasLength += 0.2; SICP = Math.min(700, SICP + 0.8); }
+                    } else if (killMudAnn > SURF_Y) {
+                        killMudAnn -= 2.5;
+                        SIDPP = Math.max(0, SIDPP - 0.6); // Continuing to drop
+                        
+                        if (gasY > killMudAnn - gasLength) gasY = killMudAnn - gasLength;
+                        if (gasY <= SURF_Y) {
+                            gasLength = Math.max(0, gasLength - 4);
+                            SICP = Math.max(0, SICP - 2);
+                        }
+                    } else {
+                        completeKill();
+                    }
+                }
+            }
+
+            // Update UI Dashboards
+            document.getElementById('val-sidpp').innerText = Math.floor(SIDPP) + " psi";
+            document.getElementById('val-sicp').innerText = Math.floor(SICP) + " psi";
+            
+            let bhpEl = document.getElementById('val-bhp');
+            if (state === 'kick') { bhpEl.innerText = "Underbalanced (BHP < Pf)"; bhpEl.className = "text-lg font-bold text-red-400 animate-pulse"; }
+            else if (state === 'shutin' || state === 'migrating' || state === 'killing') { bhpEl.innerText = "Balanced (BHP = Pf)"; bhpEl.className = "text-lg font-bold text-amber-400"; }
+            else { bhpEl.innerText = "Overbalanced (BHP > Pf)"; bhpEl.className = "text-lg font-bold text-emerald-400"; }
+
+            let sicpEl = document.getElementById('val-sicp');
+            if (SICP > 600) sicpEl.className = "text-xl font-bold text-red-500 animate-pulse";
+            else sicpEl.className = "text-xl font-bold text-amber-400";
+        }
+
+        function completeKill() {
+            state = 'killed';
+            gasLength = 0;
+            SIDPP = 0;
+            SICP = 0;
+            BHP = 5000;
+            
+            statusBox.className = "bg-emerald-900/50 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm";
+            statusBox.innerHTML = "<strong>✅ OPERATION SUCCESSFUL:</strong> Well fully circulated. P_hydrostatic > P_formation. Well is SECURE.";
+        }
+
+        function loop() {
+            updatePhysics();
+            drawBackground();
+            drawFluids();
+            animationId = requestAnimationFrame(loop);
+        }
+
+        // Start the engine
+        loop();
+
+    </script>
+</body>
+</html>

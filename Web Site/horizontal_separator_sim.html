@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Phase Horizontal Separator Dynamics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+        input[type=range] { accent-color: #10b981; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-emerald-400 mb-2">3-Phase Horizontal Separator Simulator</h1>
+            <p class="text-slate-400 text-sm">Boyun Guo - Petroleum Production Engineering (Stokes' Law and Retention Time)</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <div class="lg:col-span-1 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 border-b border-slate-600 pb-1">Facility Control</h2>
+                    <p class="text-xs text-slate-300 mb-4">
+                        The multiphase emulsion from the well separates inside the tank via gravity (Stokes' Law). If the flow rate is too high, the Retention Time drops, causing unseparated liquids to exit the wrong outlets (Carry-over).
+                    </p>
+                </div>
+
+                <div>
+                    <div class="slider-label"><span>Well Flow Rate</span> <span id="val-flow" class="font-mono text-emerald-300">Optimum</span></div>
+                    <input type="range" id="slider-flow" min="1" max="10" step="1" value="3">
+                </div>
+                
+                <div>
+                    <div class="slider-label"><span>Water Cut %</span> <span id="val-water" class="font-mono text-blue-300">30%</span></div>
+                    <input type="range" id="slider-water" min="10" max="90" step="10" value="30" style="accent-color: #3b82f6;">
+                </div>
+
+                <div class="grid grid-cols-1 gap-2 mt-2">
+                    <div class="bg-slate-900 border border-slate-600 p-2 rounded text-center">
+                        <div class="text-xs text-slate-400">Retention Time</div>
+                        <div id="val-rt" class="text-xl font-bold text-white">Sufficient</div>
+                    </div>
+                </div>
+
+                <div id="alarm-box" class="mt-2 bg-emerald-900/50 border border-emerald-500 p-3 rounded text-sm text-emerald-200 font-semibold text-center">
+                    PERFECT SEPARATION <br><span class="text-xs font-normal">Liquids are residing long enough, phases are cleanly separated.</span>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3 relative flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-4">
+                <canvas id="separatorCanvas" width="800" height="400" class="w-full h-auto"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/80 p-3 rounded border border-slate-600 text-xs backdrop-blur">
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-slate-200"></span> Gas - Rises to top</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-yellow-600"></span> Oil/Condensate - Floats in middle</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-blue-500"></span> Water - Sinks to bottom</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600"><span class="w-1 h-6 bg-gray-400"></span> Weir Plate</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('separatorCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderFlow = document.getElementById('slider-flow');
+        const sliderWater = document.getElementById('slider-water');
+
+        let flowRate = 3; let waterCut = 30; let particles = [];
+        const tankX = 50; const tankY = 50; const tankW = 700; const tankH = 300; const weirX = tankX + 550; const weirH = 150; 
+
+        class FluidParticle {
+            constructor() { this.reset(true); }
+            reset(isInitial = false) {
+                this.x = isInitial ? tankX + Math.random() * tankW : tankX + 10;
+                this.y = isInitial ? tankY + Math.random() * tankH : tankY + 150 + (Math.random() - 0.5) * 50; 
+                let rand = Math.random() * 100;
+                if (rand < 20) this.type = 'gas'; else if (rand < 20 + waterCut) this.type = 'water'; else this.type = 'oil';
+                this.vx = (flowRate * 0.5) + Math.random(); this.vy = (Math.random() - 0.5); this.active = true;
+            }
+            update() {
+                let settlingSpeed = 0;
+                if (this.type === 'gas') settlingSpeed = -3; else if (this.type === 'oil') settlingSpeed = -0.5; else if (this.type === 'water') settlingSpeed = 0.8; 
+
+                this.vx = flowRate * 0.8; this.x += this.vx;
+
+                if (this.x < tankX + 80 && this.y > tankY + 100 && this.y < tankY + 200) {
+                     this.vx = Math.random() * 0.5; this.vy += (Math.random() - 0.5) * 2; 
+                }
+                this.vy = settlingSpeed + (Math.random() - 0.5) * 0.5; this.y += this.vy;
+
+                if (this.y < tankY + 10) this.y = tankY + 10; 
+                if (this.y > tankY + tankH - 10) this.y = tankY + tankH - 10; 
+
+                if (this.x > weirX - 10 && this.x < weirX + 10) {
+                    if (this.type !== 'gas') {
+                        if (this.y > tankY + tankH - weirH) { this.x = weirX - 10; this.vx = 0; } else { this.vy = 2; }
+                    }
+                }
+
+                if (this.type === 'gas' && this.x > tankX + 600 && this.y < tankY + 50) this.active = false; 
+                if (this.type === 'water' && this.x > weirX - 100 && this.y > tankY + tankH - 30) { if (Math.random() > 0.1) this.active = false; }
+                if (this.type === 'oil' && this.x > tankX + tankW - 30 && this.y > tankY + tankH - 30) this.active = false; 
+                if (this.x > tankX + tankW) this.active = false;
+            }
+            draw() {
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.type === 'gas' ? 2 : 3, 0, Math.PI * 2);
+                if (this.type === 'gas') ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                else if (this.type === 'oil') ctx.fillStyle = 'rgba(161, 98, 7, 0.8)'; 
+                else ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; 
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 400; i++) particles.push(new FluidParticle());
+
+        function calculatePhysics() {
+            flowRate = parseInt(sliderFlow.value); waterCut = parseInt(sliderWater.value);
+            document.getElementById('val-flow').innerText = flowRate; document.getElementById('val-water').innerText = waterCut + "%";
+
+            let alarm = document.getElementById('alarm-box'); let rtDisplay = document.getElementById('val-rt');
+
+            if (flowRate > 7) {
+                alarm.className = "mt-2 bg-red-900/50 border border-red-500 p-3 rounded text-sm text-red-200 font-semibold text-center";
+                alarm.innerHTML = `ALARM: LIQUID CARRY-OVER! <br><span class="text-xs font-normal">Flow rate is too high. Water and oil are mixing and exiting through the wrong outlets.</span>`;
+                rtDisplay.innerText = "Too Low (Insufficient)"; rtDisplay.className = "text-xl font-bold text-red-400";
+            } else if (flowRate > 4) {
+                alarm.className = "mt-2 bg-amber-900/50 border border-amber-500 p-3 rounded text-sm text-amber-200 font-semibold text-center";
+                alarm.innerHTML = `WARNING: On the Limit <br><span class="text-xs font-normal">Separation has started, but some liquid droplets might bypass the correct lines.</span>`;
+                rtDisplay.innerText = "Marginal"; rtDisplay.className = "text-xl font-bold text-amber-400";
+            } else {
+                alarm.className = "mt-2 bg-emerald-900/50 border border-emerald-500 p-3 rounded text-sm text-emerald-200 font-semibold text-center";
+                alarm.innerHTML = `PERFECT SEPARATION <br><span class="text-xs font-normal">Residence Time is adequate, Stokes' Law is functioning flawlessly.</span>`;
+                rtDisplay.innerText = "Optimum (Sufficient)"; rtDisplay.className = "text-xl font-bold text-emerald-400";
+            }
+        }
+
+        function drawSeparator() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.roundRect(tankX, tankY, tankW, tankH, 40); ctx.stroke();
+            
+            let grad = ctx.createLinearGradient(0, tankY, 0, tankY + tankH); grad.addColorStop(0, '#0f172a'); grad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = grad; ctx.fill();
+
+            ctx.fillStyle = '#64748b'; ctx.fillRect(tankX - 40, tankY + 130, 60, 40);
+            ctx.fillStyle = '#cbd5e1'; ctx.fillRect(tankX + 60, tankY + 110, 10, 80);
+            ctx.fillStyle = '#94a3b8'; ctx.fillRect(weirX, tankY + tankH - weirH, 5, weirH);
+
+            ctx.fillStyle = '#64748b'; ctx.fillRect(tankX + 600, tankY - 30, 40, 50); ctx.fillStyle = '#cbd5e1'; ctx.font = '12px Arial'; ctx.fillText("Gas Outlet", tankX + 590, tankY - 40);
+            ctx.fillStyle = '#64748b'; ctx.fillRect(weirX - 80, tankY + tankH - 10, 40, 40); ctx.fillText("Water Outlet", weirX - 80, tankY + tankH + 45);
+            ctx.fillStyle = '#64748b'; ctx.fillRect(tankX + tankW - 80, tankY + tankH - 10, 40, 40); ctx.fillText("Oil Outlet", tankX + tankW - 80, tankY + tankH + 45);
+        }
+
+        function animate() {
+            calculatePhysics(); drawSeparator();
+            while (particles.length < 400) { particles.push(new FluidParticle()); }
+            for (let i = particles.length - 1; i >= 0; i--) { let p = particles[i]; p.update(); if (p.active) { p.draw(); } else { particles.splice(i, 1); } }
+            requestAnimationFrame(animate);
+        }
+
+        sliderFlow.addEventListener('input', calculatePhysics); sliderWater.addEventListener('input', calculatePhysics); animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turkey Energy Infrastructure Atlas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); cursor: crosshair;}
+        .filter-btn { transition: all 0.2s; border-left: 4px solid transparent; }
+        .filter-btn.active { background-color: #1e293b; color: white; font-weight: bold; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full h-full flex flex-col">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4 shrink-0">
+            <h1 class="text-3xl font-bold text-sky-400 mb-1">National Energy Infrastructure Atlas</h1>
+            <p class="text-slate-400 text-sm">Strategic Upstream, Midstream and Downstream Assets & Pipeline Networks</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
+            
+            <!-- Left Sidebar: Filters -->
+            <div class="lg:col-span-2 flex flex-col gap-2 bg-slate-800 p-3 rounded-xl border border-slate-700 shadow-lg overflow-y-auto custom-scrollbar">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Filter View</h2>
+                
+                <button onclick="setFilter('all')" id="btn-all" class="filter-btn active text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #ffffff;">🌐 All Assets</button>
+                <button onclick="setFilter('gas')" id="btn-gas" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #38bdf8;">💨 Upstream Gas</button>
+                <button onclick="setFilter('oil')" id="btn-oil" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #f59e0b;">🛢️ Upstream Oil</button>
+                <button onclick="setFilter('geothermal')" id="btn-geothermal" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #10b981;">🌋 Geothermal</button>
+                <button onclick="setFilter('lng')" id="btn-lng" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #8b5cf6;">🚢 LNG & Marine</button>
+                <button onclick="setFilter('refinery')" id="btn-refinery" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #ef4444;">🏭 Refineries</button>
+                <button onclick="setFilter('storage')" id="btn-storage" class="filter-btn text-left px-3 py-2 rounded text-sm text-slate-300" style="border-left-color: #94a3b8;">🛢 Underground Storage</button>
+
+                <div class="mt-auto pt-4 border-t border-slate-600">
+                    <div class="text-xs text-slate-500 mb-2">Network Status</div>
+                    <div class="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> SCADA Online
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: Interactive Map Canvas -->
+            <div class="lg:col-span-7 relative flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 overflow-hidden h-full">
+                <canvas id="mapCanvas" width="900" height="500" class="w-full h-full object-contain"></canvas>
+            </div>
+
+            <!-- Right Sidebar: Facility Intelligence -->
+            <div class="lg:col-span-3 flex flex-col gap-4">
+                <div class="bg-slate-800 p-5 rounded-xl border border-sky-900 shadow-lg h-full flex flex-col">
+                    <h2 class="text-lg font-bold text-sky-400 border-b border-sky-900 pb-2 mb-4">Facility Intelligence</h2>
+                    
+                    <div id="info-default" class="text-center text-slate-500 my-auto">
+                        <svg class="w-16 h-16 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                        Hover over a facility or pipeline node on the map to view detailed engineering data.
+                    </div>
+
+                    <div id="info-panel" class="hidden flex-1 flex flex-col">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span id="info-badge" class="w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]"></span>
+                            <span id="info-type" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</span>
+                        </div>
+                        <h3 id="info-title" class="text-xl font-bold text-white mb-2 leading-tight">Name</h3>
+                        <div class="text-xs text-slate-400 mb-4 flex items-center gap-1">
+                            <span>📍</span> <span id="info-region">Region</span>
+                        </div>
+                        
+                        <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 shadow-inner flex-1">
+                            <h4 class="text-xs text-emerald-400 font-bold uppercase tracking-wider mb-2">Strategic Importance</h4>
+                            <p id="info-desc" class="text-sm text-slate-300 leading-relaxed"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let activeFilter = 'all';
+        let hoveredItem = null;
+        let animationTime = 0;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        // Coordinate Boundaries for Map Projection (Turkey)
+        const LAT_MAX = 42.5; const LAT_MIN = 35.5;
+        const LON_MIN = 25.5; const LON_MAX = 45.0;
+
+        function latLonToXY(lat, lon) {
+            const x = ((lon - LON_MIN) / (LON_MAX - LON_MIN)) * canvas.width;
+            const y = canvas.height - ((lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * canvas.height;
+            return { x, y };
+        }
+
+        // Color Dictionary
+        const typeColors = {
+            'gas': '#38bdf8', 'oil': '#f59e0b', 'geothermal': '#10b981',
+            'lng': '#8b5cf6', 'storage': '#94a3b8', 'refinery': '#ef4444'
+        };
+
+        // Database of Facilities
+        const facilities = [
+            // UPSTREAM GAS
+            { id: 'sakarya', type: 'gas', name: 'Sakarya Gas Field', region: 'Black Sea (Offshore)', lat: 42.4, lon: 31.2, desc: 'Turkey\'s largest deepwater natural gas production field, initiated with the Tuna-1 discovery.' },
+            { id: 'filyos', type: 'gas', name: 'Filyos Gas Processing Plant', region: 'Zonguldak', lat: 41.5, lon: 32.0, desc: 'Massive onshore facility where gas from the Sakarya field is processed and fed into the national grid.' },
+            { id: 'akcakoca', type: 'gas', name: 'Akçakoca Platform', region: 'Western Black Sea', lat: 41.2, lon: 31.1, desc: 'Historic first offshore natural gas production platform in the Black Sea.' },
+            { id: 'thrace', type: 'gas', name: 'Thrace Basin', region: 'Tekirdağ / Kırklareli', lat: 41.3, lon: 27.5, desc: 'Historic onshore conventional and tight gas production region.' },
+            
+            // UPSTREAM OIL
+            { id: 'gabar', type: 'oil', name: 'Gabar (Şehit Aybüke Yalçın) Oil Field', region: 'Şırnak', lat: 37.5, lon: 42.0, desc: 'A massive, high-quality (API) oil discovery in the Gabar Mountain region, continuously breaking daily production records.' },
+            { id: 'batman_oil', type: 'oil', name: 'Batman & Raman Oil Fields', region: 'Batman', lat: 37.9, lon: 41.3, desc: 'The birthplace of Turkey\'s oil production. Characterized by intensive Sucker Rod Pump (SRP) operations.' },
+            { id: 'adiyaman', type: 'oil', name: 'Adıyaman Oil Region', region: 'Adıyaman', lat: 37.8, lon: 38.3, desc: 'One of the most critical heavy oil production and well completion zones in Southeastern Anatolia.' },
+            { id: 'diyarbakir', type: 'oil', name: 'Diyarbakır Oil Fields', region: 'Diyarbakır', lat: 38.0, lon: 40.2, desc: 'Critical well and production areas located within the Southeastern Anatolian oil belt.' },
+            
+            // GEOTHERMAL
+            { id: 'kizildere', type: 'geothermal', name: 'Kızıldere Geothermal Plant', region: 'Denizli / Sarayköy', lat: 37.9, lon: 28.8, desc: 'Turkey\'s first and largest geothermal power plant, producing high-enthalpy fluid.' },
+            { id: 'germencik', type: 'geothermal', name: 'Germencik Geothermal Field', region: 'Aydın', lat: 37.8, lon: 27.6, desc: 'High-capacity geothermal production area located on the Büyük Menderes Graben.' },
+
+            // LNG & TERMINALS
+            { id: 'ceyhan', type: 'lng', name: 'BOTAŞ Ceyhan Marine Terminal', region: 'Adana (Ceyhan)', lat: 36.9, lon: 35.9, desc: 'The ultimate endpoint of the BTC and Kirkuk-Ceyhan pipelines; a massive crude oil storage and marine export hub.' },
+            { id: 'dortyol', type: 'lng', name: 'BOTAŞ Dörtyol FSRU', region: 'Hatay (Dörtyol)', lat: 36.8, lon: 36.2, desc: 'Strategic regasification terminal hosting the Ertuğrul Gazi FSRU vessel.' },
+            { id: 'saros', type: 'lng', name: 'BOTAŞ Saros FSRU', region: 'Edirne (Saros)', lat: 40.6, lon: 26.8, desc: 'Next-generation FSRU terminal established to increase gas supply security in the Marmara Region and Thrace.' },
+            { id: 'ereglisi', type: 'lng', name: 'Marmara Ereğlisi LNG', region: 'Tekirdağ', lat: 41.0, lon: 27.9, desc: 'First onshore LNG import and regasification terminal in Turkey.' },
+            { id: 'aliaga_lng', type: 'lng', name: 'Egegaz & Etki Liman FSRU', region: 'İzmir (Aliağa)', lat: 38.8, lon: 26.9, desc: 'High-capacity onshore LNG terminal and FSRU feeding the heavily industrialized Aegean zone.' },
+            
+            // UNDERGROUND STORAGE
+            { id: 'silivri', type: 'storage', name: 'Silivri Underground Gas Storage', region: 'Istanbul (Offshore)', lat: 41.0, lon: 28.2, desc: 'Depleted gas reservoirs (Northern Marmara) converted into a massive offshore natural gas storage facility.' },
+            { id: 'tuzgolu', type: 'storage', name: 'Tuz Gölü Underground Gas Storage', region: 'Aksaray', lat: 38.5, lon: 33.5, desc: 'Storage facility created by dissolving underground salt domes with fresh water to form artificial caverns.' },
+            
+            // REFINERIES (DOWNSTREAM)
+            { id: 'izmit', type: 'refinery', name: 'TÜPRAŞ İzmit Refinery', region: 'Kocaeli', lat: 40.7, lon: 29.9, desc: 'Turkey\'s largest and one of Europe\'s most complex refineries.' },
+            { id: 'aliaga_ref', type: 'refinery', name: 'TÜPRAŞ & STAR Refineries', region: 'İzmir (Aliağa)', lat: 38.7, lon: 27.0, desc: 'Giant petrochemical complex housing the SOCAR STAR and TÜPRAŞ Izmir refineries.' },
+            { id: 'kirikkale', type: 'refinery', name: 'TÜPRAŞ Kırıkkale Refinery', region: 'Kırıkkale', lat: 39.8, lon: 33.5, desc: 'Strategic Central Anatolian refinery fed by a crude oil pipeline directly from the Ceyhan terminal.' },
+            { id: 'batman_ref', type: 'refinery', name: 'TÜPRAŞ Batman Refinery', region: 'Batman', lat: 37.8, lon: 41.2, desc: 'Turkey\'s first refinery, originally established to process heavy crude oil directly from the surrounding Southeastern fields.' }
+        ];
+
+        // Pipeline Routes (Coordinates: Lat, Lon)
+        const pipelineRoutes = [
+            { id: 'tanap', name: 'TANAP (Trans-Anatolian)', type: 'gas', desc: 'Main backbone transporting Azerbaijani natural gas through Turkey to Europe.',
+              points: [[41.1, 42.8], [39.9, 41.2], [39.7, 37.0], [39.9, 32.8], [39.7, 30.5], [40.6, 26.5]] },
+            { id: 'btc', name: 'BTC (Baku-Tbilisi-Ceyhan)', type: 'oil', desc: 'Safely delivers Caspian crude oil across Anatolia to the Ceyhan marine export terminal.',
+              points: [[41.1, 42.8], [39.9, 41.2], [39.7, 39.5], [36.9, 35.9]] },
+            { id: 'kerkuk', name: 'Kirkuk-Ceyhan (ITP)', type: 'oil', desc: 'Historic crude oil pipeline delivering Iraqi oil to the Ceyhan marine terminal.',
+              points: [[37.2, 42.5], [37.8, 41.2], [36.9, 35.9]] },
+            { id: 'turkstream', name: 'TurkStream', type: 'gas', desc: 'Transports Russian gas directly to Thrace running deep under the Black Sea.',
+              points: [[42.5, 30.0], [41.6, 28.1], [41.3, 27.5]] },
+            { id: 'bluestream', name: 'Blue Stream', type: 'gas', desc: 'Delivers Russian gas across the Black Sea bed to Samsun, and onwards to Ankara.',
+              points: [[42.5, 36.3], [41.3, 36.3], [40.5, 35.0], [39.9, 33.0]] },
+            { id: 'iran_tr', name: 'Iran-Turkey Gas Pipeline', type: 'gas', desc: 'Major eastern import line bringing natural gas from Iran into the national grid via Doğubayazıt.',
+              points: [[39.4, 44.4], [39.9, 41.2]] },
+            { id: 'bte', name: 'BTE (Baku-Tbilisi-Erzurum)', type: 'gas', desc: 'Parallel to the BTC, it brings Caspian gas into the Turkish national grid at Erzurum.',
+              points: [[41.1, 42.8], [39.9, 41.2]] }
+        ];
+
+        // Particles moving along pipelines
+        let flowParticles = [];
+        pipelineRoutes.forEach(route => {
+            for(let i=0; i<4; i++) {
+                flowParticles.push({ route: route, progress: Math.random(), speed: 0.002 + Math.random() * 0.003 });
+            }
+        });
+
+        // High-Resolution Map Silhouette
+        const turkeyBorder = [
+            [41.7, 26.5], [42.0, 27.5], [41.9, 28.0], [41.0, 29.0], [41.2, 30.0],
+            [41.5, 32.0], [42.0, 35.0], [41.0, 38.0], [41.0, 40.0], [41.5, 41.5],
+            [40.0, 44.0], [39.5, 44.5], [37.5, 44.0], [37.0, 42.5], [37.0, 40.0],
+            [36.8, 38.0], [36.0, 36.0], [36.5, 34.0], [36.0, 32.0], [36.8, 28.0],
+            [38.0, 27.0], [39.0, 26.5], [40.0, 26.0], [40.5, 26.5], [41.7, 26.5]
+        ];
+        const cyprusBorder = [
+            [35.3, 32.5], [35.5, 33.5], [35.7, 34.5], [35.2, 34.0], [34.9, 33.0], [35.3, 32.5]
+        ];
+
+        function setFilter(filter) {
+            activeFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + filter).classList.add('active');
+        }
+
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Sea
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Landmass
+            ctx.fillStyle = '#1e293b';
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+
+            // Turkey
+            ctx.beginPath();
+            turkeyBorder.forEach((coord, i) => {
+                let pos = latLonToXY(coord[0], coord[1]);
+                if (i === 0) ctx.moveTo(pos.x, pos.y);
+                else ctx.lineTo(pos.x, pos.y);
+            });
+            ctx.fill(); ctx.stroke();
+
+            // Cyprus
+            ctx.beginPath();
+            cyprusBorder.forEach((coord, i) => {
+                let pos = latLonToXY(coord[0], coord[1]);
+                if (i === 0) ctx.moveTo(pos.x, pos.y);
+                else ctx.lineTo(pos.x, pos.y);
+            });
+            ctx.fill(); ctx.stroke();
+            
+            // Grid lines for high-tech look
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.lineWidth = 1;
+            for(let x=0; x<canvas.width; x+=50) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+            for(let y=0; y<canvas.height; y+=50) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+        }
+
+        function drawPipelines() {
+            pipelineRoutes.forEach(route => {
+                let isFaded = activeFilter !== 'all' && route.type !== activeFilter;
+                if (isFaded) return;
+
+                ctx.strokeStyle = route.type === 'gas' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(245, 158, 11, 0.4)';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                route.points.forEach((coord, i) => {
+                    let pos = latLonToXY(coord[0], coord[1]);
+                    if (i === 0) ctx.moveTo(pos.x, pos.y);
+                    else ctx.lineTo(pos.x, pos.y);
+                });
+                ctx.stroke();
+            });
+
+            // Flow Particles
+            flowParticles.forEach(p => {
+                let isFaded = activeFilter !== 'all' && p.route.type !== activeFilter;
+                if (isFaded) return;
+
+                p.progress += p.speed;
+                if (p.progress >= 1) p.progress = 0;
+
+                let totalSegments = p.route.points.length - 1;
+                let scaled = p.progress * totalSegments;
+                let index = Math.floor(scaled);
+                if (index >= totalSegments) index = totalSegments - 1;
+                let remainder = scaled - index;
+
+                let p1 = latLonToXY(p.route.points[index][0], p.route.points[index][1]);
+                let p2 = latLonToXY(p.route.points[index+1][0], p.route.points[index+1][1]);
+
+                let x = p1.x + (p2.x - p1.x) * remainder;
+                let y = p1.y + (p2.y - p1.y) * remainder;
+
+                ctx.beginPath();
+                ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = p.route.type === 'gas' ? '#38bdf8' : '#f59e0b';
+                ctx.shadowBlur = 8; ctx.shadowColor = ctx.fillStyle;
+                ctx.fill(); ctx.shadowBlur = 0;
+            });
+        }
+
+        function drawFacilities() {
+            facilities.forEach(fac => {
+                let isHovered = hoveredItem && hoveredItem.id === fac.id;
+                let isFaded = activeFilter !== 'all' && fac.type !== activeFilter;
+                
+                let pos = latLonToXY(fac.lat, fac.lon);
+                let color = typeColors[fac.type];
+
+                ctx.globalAlpha = isFaded ? 0.1 : 1.0;
+
+                if (isHovered && !isFaded) {
+                    // Pulsing Halo Effect
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 10 + Math.sin(animationTime * 15) * 4, 0, Math.PI * 2);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                    ctx.fill();
+                }
+
+                // Core Point
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.globalAlpha = 1.0;
+            });
+        }
+
+        // Native Canvas Tooltip
+        function drawTooltipOnCanvas() {
+            if (!hoveredItem) return;
+
+            let pos;
+            if (hoveredItem.lat) {
+                pos = latLonToXY(hoveredItem.lat, hoveredItem.lon);
+            } else {
+                pos = { x: lastMouseX, y: lastMouseY };
+            }
+
+            const title = hoveredItem.name;
+            const sub = hoveredItem.type.toUpperCase() + (hoveredItem.lat ? " FACILITY" : " PIPELINE");
+
+            ctx.font = 'bold 12px sans-serif';
+            const titleW = ctx.measureText(title).width;
+            ctx.font = '10px sans-serif';
+            const subW = ctx.measureText(sub).width;
+            const boxW = Math.max(titleW, subW) + 24;
+            const boxH = 46;
+
+            let boxX = pos.x + 15;
+            let boxY = pos.y - 25;
+
+            // Keep inside bounds
+            if (boxX + boxW > canvas.width - 5) boxX = pos.x - boxW - 15;
+            if (boxY < 5) boxY = pos.y + 15;
+            if (boxY + boxH > canvas.height - 5) boxY = canvas.height - boxH - 5;
+
+            // Background with shadow
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.95)'; // slate-900
+            ctx.beginPath(); 
+            ctx.roundRect(boxX, boxY, boxW, boxH, 6); 
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Border
+            ctx.strokeStyle = typeColors[hoveredItem.type] || '#38bdf8';
+            ctx.lineWidth = 1.5; 
+            ctx.stroke();
+
+            // Text
+            ctx.fillStyle = typeColors[hoveredItem.type] || '#38bdf8';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(title, boxX + 12, boxY + 18);
+
+            ctx.fillStyle = '#94a3b8'; // slate-400
+            ctx.font = '10px sans-serif';
+            ctx.fillText(sub, boxX + 12, boxY + 34);
+        }
+
+        function render() {
+            animationTime += 0.02;
+            drawMap();
+            drawPipelines();
+            drawFacilities();
+            drawTooltipOnCanvas();
+            requestAnimationFrame(render);
+        }
+
+        // Interaction (Perfect Object-Contain Mapping)
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            
+            // Calculate actual display scale inside object-contain
+            const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+            const displayedWidth = canvas.width * scale;
+            const displayedHeight = canvas.height * scale;
+            const offsetX = (rect.width - displayedWidth) / 2;
+            const offsetY = (rect.height - displayedHeight) / 2;
+
+            // Accurate internal canvas coordinates
+            lastMouseX = (e.clientX - rect.left - offsetX) / scale;
+            lastMouseY = (e.clientY - rect.top - offsetY) / scale;
+            
+            const mouseX = lastMouseX;
+            const mouseY = lastMouseY;
+            
+            let found = null;
+
+            // Check facilities
+            for (let fac of facilities) {
+                if (activeFilter !== 'all' && fac.type !== activeFilter) continue;
+                let pos = latLonToXY(fac.lat, fac.lon);
+                let dist = Math.hypot(mouseX - pos.x, mouseY - pos.y);
+                if (dist < 15) { found = fac; break; } // Hit radius expanded to 15
+            }
+
+            // Check pipelines if no facility found
+            if (!found) {
+                for (let route of pipelineRoutes) {
+                    if (activeFilter !== 'all' && route.type !== activeFilter) continue;
+                    for (let i = 0; i < route.points.length - 1; i++) {
+                        let p1 = latLonToXY(route.points[i][0], route.points[i][1]);
+                        let p2 = latLonToXY(route.points[i+1][0], route.points[i+1][1]);
+                        
+                        // Distance from point to line segment
+                        let A = mouseX - p1.x; let B = mouseY - p1.y; let C = p2.x - p1.x; let D = p2.y - p1.y;
+                        let dot = A * C + B * D; let len_sq = C * C + D * D;
+                        let param = -1;
+                        if (len_sq != 0) param = dot / len_sq;
+                        let xx, yy;
+                        if (param < 0) { xx = p1.x; yy = p1.y; }
+                        else if (param > 1) { xx = p2.x; yy = p2.y; }
+                        else { xx = p1.x + param * C; yy = p1.y + param * D; }
+                        let dist = Math.hypot(mouseX - xx, mouseY - yy);
+
+                        if (dist < 8) { found = route; break; }
+                    }
+                    if (found) break;
+                }
+            }
+
+            if (found !== hoveredItem) {
+                hoveredItem = found;
+                if (found) {
+                    canvas.style.cursor = 'pointer';
+                    
+                    // Update Right Panel
+                    document.getElementById('info-default').classList.add('hidden');
+                    document.getElementById('info-panel').classList.remove('hidden');
+                    document.getElementById('info-title').innerText = found.name;
+                    document.getElementById('info-type').innerText = found.type;
+                    document.getElementById('info-badge').style.backgroundColor = typeColors[found.type] || '#38bdf8';
+                    document.getElementById('info-badge').style.boxShadow = `0 0 8px ${typeColors[found.type] || '#38bdf8'}`;
+                    document.getElementById('info-region').innerText = found.region || 'Pipeline Network';
+                    document.getElementById('info-desc').innerText = found.desc;
+                } else {
+                    canvas.style.cursor = 'crosshair';
+                    document.getElementById('info-default').classList.remove('hidden');
+                    document.getElementById('info-panel').classList.add('hidden');
+                }
+            }
+        });
+
+        // Init
+        render();
+
+    </script>
+</body>
+</html>

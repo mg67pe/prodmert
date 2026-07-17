@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydraulic Fracturing (Fracking) & Flowback</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #f59e0b; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-7xl w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-amber-500 mb-2">Hydraulic Fracturing & Flowback Dynamics</h1>
+            <p class="text-slate-400 text-sm">Pad Volume, Proppant Transport, Fracture Closure, and Gas Production (Conductivity)</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Panel -->
+            <div class="lg:col-span-4 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col gap-4">
+                
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">1. Pumping Phase (Basınçlandırma)</h2>
+                    
+                    <div class="slider-label text-red-400"><span>Surface Pump Pressure</span> <span id="val-p" class="font-mono">0 psi</span></div>
+                    <input type="range" id="slider-p" min="0" max="10000" step="100" value="0" style="accent-color: #ef4444;">
+                    
+                    <div class="flex justify-between text-[10px] text-slate-500 -mt-2 mb-4 px-1">
+                        <span>Bleed (0)</span>
+                        <span>Breakdown: 6000</span>
+                        <span>10k</span>
+                    </div>
+
+                    <div class="slider-label text-amber-400"><span>Proppant (Kum) Konstrasyonu</span> <span id="val-prop" class="font-mono">0 ppa</span></div>
+                    <input type="range" id="slider-prop" min="0" max="8" step="1" value="0">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mt-2">
+                    <div class="bg-slate-900 border border-slate-600 p-3 rounded-lg text-center shadow-inner">
+                        <div class="text-[10px] text-slate-400 mb-1 uppercase tracking-wider">İletkenlik (Conductivity)</div>
+                        <div id="val-cond" class="text-lg font-bold text-amber-500">0 md-ft</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-600 p-3 rounded-lg text-center shadow-inner">
+                        <div class="text-[10px] text-slate-400 mb-1 uppercase tracking-wider">Kuyu Debisi (Üretim)</div>
+                        <div id="val-flow" class="text-lg font-bold text-sky-400">0 MMscfd</div>
+                    </div>
+                </div>
+
+                <!-- Theory Box -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-xs text-slate-300 space-y-3 flex-1 overflow-y-auto">
+                    <h3 class="font-bold text-emerald-400 uppercase tracking-widest border-b border-emerald-900 pb-1 mb-2">Frac Fiziği & İşlem Sırası</h3>
+                    <p><strong class="text-blue-400">1. Pad Fazı (Sadece Su):</strong> Kum (Proppant) konsantrasyonu 0 iken basılan "Slickwater" kayayı yırtar ve çatlağı büyütür.</p>
+                    <p><strong class="text-amber-400">2. Slurry Fazı (Kum + Su):</strong> Açılan çatlağın içine kum basılarak doldurulur.</p>
+                    <p><strong class="text-red-400">3. Flowback (Bleed Off):</strong> Pompalar durup basınç 0'a çekildiğinde kaya kapanır. Kumlar sıkışır ve kapanmayı engeller. Kalan bu boşluklar formasyondaki gazın kuyuya yüksek hızda akmasını sağlar!</p>
+                </div>
+
+                <div id="status-box" class="bg-slate-900/50 border border-slate-500 p-3 rounded-lg text-sm text-slate-400 font-semibold text-center transition-all">
+                    POMPA KAPALI <br><span class="text-xs font-normal">Kuyu statik durumda. Üretim veya pompalama yok.</span>
+                </div>
+            </div>
+
+            <!-- Right Canvas -->
+            <div class="lg:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative">
+                <canvas id="fracCanvas" width="800" height="550" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Faz & Akışkan Lejantı</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-blue-500 rounded-full shadow-[0_0_5px_#3b82f6]"></span> Slickwater (Çatlatma Sıvısı)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-amber-500 rounded-full shadow-[0_0_5px_#f59e0b]"></span> Proppant (Kum Taneleri)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-red-500 rounded-full shadow-[0_0_5px_#ef4444]"></span> Rezervuar Gazı (Üretim)</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-slate-400">
+                        P > 6000 psi: Çatlak Büyür (Propagation) <br>
+                        P = 0 psi: Kaya Kapanır, Üretim Başlar
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fracCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderP = document.getElementById('slider-p');
+        const sliderProp = document.getElementById('slider-prop');
+
+        // Physics Constants
+        const CX = canvas.width / 2;
+        const CY = 400; // Perforation depth (Lowered for better visuals)
+        const BREAKDOWN_P = 6000;
+        
+        let pressure = 0; 
+        let proppantConc = 0;
+        
+        // Fracture Geometry
+        let fracLength = 0; // Max 350
+        let fracWidth = 0;  // Max 30
+        let proppedLength = 0; // How far the sand has reached
+        let proppedWidth = 0; // Thickness of the sand bed
+        
+        // Particles
+        let injectionParticles = [];
+        let productionParticles = []; 
+
+        // Sound / State
+        let state = 'idle'; // pumping, flowback, idle
+
+        class InjectionParticle {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = CX + (Math.random()-0.5)*12; 
+                this.y = 100;
+                this.isProp = Math.random() < (proppantConc / 10);
+                this.active = true;
+            }
+            update() {
+                if (!this.active || pressure === 0) {
+                    this.active = false; return;
+                }
+                
+                // Flow down casing
+                if (this.y < CY) {
+                    this.y += 12 + (pressure / 1000);
+                } else {
+                    // Turn into fracture
+                    if (fracLength > 10) {
+                        let dir = Math.random() > 0.5 ? 1 : -1;
+                        this.x += dir * (8 + Math.random()*8);
+                        this.y += (Math.random()-0.5) * fracWidth;
+                        
+                        // Settle logic: If it reaches the tip of the proppant bed or fracture
+                        let distFromWell = Math.abs(this.x - CX);
+                        if (distFromWell > fracLength - 10) {
+                            this.active = false;
+                        } else if (this.isProp && distFromWell >= proppedLength - 10) {
+                            // Expand the proppant bed
+                            if (proppedLength < fracLength) proppedLength += 0.5;
+                            if (proppedWidth < fracWidth) proppedWidth += 0.05;
+                            this.active = false;
+                        }
+                    } else {
+                        this.active = false; // Smashed into rock
+                    }
+                }
+            }
+            draw() {
+                if(!this.active) return;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.isProp ? 2.5 : 2, 0, Math.PI*2);
+                ctx.fillStyle = this.isProp ? '#f59e0b' : 'rgba(56, 189, 248, 0.8)';
+                ctx.fill();
+            }
+        }
+
+        class ProductionParticle {
+            constructor() { this.reset(); }
+            reset() {
+                // Spawn deep in the rock, near the propped fracture
+                let side = Math.random() > 0.5 ? 1 : -1;
+                this.x = CX + side * (Math.random() * proppedLength);
+                
+                // Spawn above or below the fracture
+                let yOffset = (Math.random() * 50) + 10;
+                this.y = CY + (Math.random() > 0.5 ? yOffset : -yOffset);
+                
+                this.active = true;
+                this.inFrac = false;
+                this.inWell = false;
+            }
+            update() {
+                if (!this.active || pressure > 0 || proppedLength === 0) {
+                    this.active = false; return;
+                }
+
+                if (!this.inFrac) {
+                    // Move vertically towards the fracture (Matrix linear flow)
+                    let speed = 0.5 + (proppedWidth / 10);
+                    if (this.y > CY) this.y -= speed;
+                    else this.y += speed;
+
+                    if (Math.abs(this.y - CY) <= proppedWidth/2) this.inFrac = true;
+                } 
+                else if (!this.inWell) {
+                    // Inside the fracture, move horizontally to the wellbore (Bilinear flow)
+                    // High conductivity = fast movement
+                    let condSpeed = 2 + (proppedWidth / 2);
+                    if (this.x > CX) this.x -= condSpeed;
+                    else this.x += condSpeed;
+                    
+                    // Wiggle inside the sand pack
+                    this.y += (Math.random() - 0.5) * 2;
+
+                    if (Math.abs(this.x - CX) <= 15) {
+                        this.inWell = true;
+                        this.x = CX + (Math.random()-0.5)*10;
+                    }
+                }
+                else {
+                    // Up the tubing (Radial / Wellbore flow)
+                    this.y -= 10;
+                    if (this.y < 100) this.reset(); // Produced at surface
+                }
+            }
+            draw() {
+                if(!this.active) return;
+                ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, Math.PI*2);
+                ctx.fillStyle = this.inWell ? '#ef4444' : '#f87171'; // Red/Orange gas
+                ctx.shadowBlur = this.inFrac ? 5 : 0;
+                ctx.shadowColor = '#ef4444';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // Init particles arrays
+        for(let i=0; i<300; i++) injectionParticles.push(new InjectionParticle());
+        for(let i=0; i<200; i++) productionParticles.push(new ProductionParticle());
+
+        function updatePhysics() {
+            pressure = parseInt(sliderP.value);
+            proppantConc = parseInt(sliderProp.value);
+            
+            document.getElementById('val-p').innerText = pressure + " psi";
+            document.getElementById('val-prop').innerText = proppantConc + " ppa";
+
+            let statusBox = document.getElementById('status-box');
+
+            if (pressure > 0) {
+                // --- PUMPING PHASE ---
+                state = 'pumping';
+                
+                if (pressure >= BREAKDOWN_P) {
+                    // Frac grows in length and width
+                    if (fracLength < 350) fracLength += 1;
+                    let targetWidth = 10 + ((pressure - BREAKDOWN_P) / 4000) * 20;
+                    if (fracWidth < targetWidth) fracWidth += 0.5;
+                    
+                    if (proppantConc === 0) {
+                        statusBox.className = "mt-2 bg-blue-900/50 border border-blue-500 p-3 rounded-lg text-sm text-blue-200 font-semibold text-center";
+                        statusBox.innerHTML = "💧 PAD PHASE (SLICKWATER) <br><span class='text-xs font-normal'>Kaya yırtılıyor (Breakdown). Çatlak büyüyor ama kum yok. Basıncı kesersen kaya geri kapanır!</span>";
+                    } else {
+                        statusBox.className = "mt-2 bg-red-900/50 border border-red-500 p-3 rounded-lg text-sm text-red-200 font-semibold text-center";
+                        statusBox.innerHTML = "🔥 SLURRY PHASE (PROPPANT) <br><span class='text-xs font-normal'>Kum basılıyor! Kum taneleri çatlağın içine yerleşiyor (Proppant Pack).</span>";
+                    }
+                } else {
+                    // Pumping below breakdown (Fluid enters but frac doesn't grow)
+                    fracWidth = Math.max(proppedWidth, fracWidth * 0.95); // Starts closing slowly
+                    statusBox.className = "mt-2 bg-amber-900/50 border border-amber-500 p-3 rounded-lg text-sm text-amber-200 font-semibold text-center";
+                    statusBox.innerHTML = "⚠️ LOW PRESSURE PUMPING <br><span class='text-xs font-normal'>Basınç kayayı kırmaya yetmiyor. Sıvı sadece kuyuya doluyor.</span>";
+                }
+
+                // Reset production
+                document.getElementById('val-flow').innerText = "0 MMscfd";
+                document.getElementById('val-flow').className = "text-lg font-bold text-slate-500";
+
+            } else {
+                // --- FLOWBACK & PRODUCTION PHASE ---
+                state = 'flowback';
+                
+                // Fracture heals (closes) onto the proppant
+                if (fracWidth > proppedWidth + 2) fracWidth -= 1; // Snap shut
+                else fracWidth = proppedWidth; // Rests on proppant
+
+                let conductivity = proppedLength * proppedWidth * 1.5;
+                document.getElementById('val-cond').innerText = conductivity.toFixed(0) + " md-ft";
+
+                if (conductivity > 100) {
+                    let gasFlow = (conductivity / 100);
+                    document.getElementById('val-flow').innerText = gasFlow.toFixed(1) + " MMscfd";
+                    document.getElementById('val-flow').className = "text-lg font-bold text-sky-400 animate-pulse";
+                    
+                    statusBox.className = "mt-2 bg-emerald-900/50 border border-emerald-500 p-3 rounded-lg text-sm text-emerald-200 font-semibold text-center";
+                    statusBox.innerHTML = "✅ FLOWBACK & PRODUCTION <br><span class='text-xs font-normal'>Kaya kapandı ama kumlara takıldı! Gaz, açık kalan kum otobanından kuyuya akıyor (Infinite Conductivity).</span>";
+                } else if (fracLength > 0 && proppedLength < 10) {
+                    document.getElementById('val-flow').innerText = "0 MMscfd";
+                    document.getElementById('val-flow').className = "text-lg font-bold text-red-500";
+                    
+                    statusBox.className = "mt-2 bg-red-900/50 border border-red-500 p-3 rounded-lg text-sm text-red-200 font-semibold text-center";
+                    statusBox.innerHTML = "🚨 FAILED FRAC (HEALED) <br><span class='text-xs font-normal'>İçeri kum basmadın! Kaya tamamen geri kapandı. Üretim artışı SAĞLANAMADI.</span>";
+                } else {
+                    document.getElementById('val-flow').innerText = "0 MMscfd";
+                    statusBox.className = "mt-2 bg-slate-900/50 border border-slate-500 p-3 rounded-lg text-sm text-slate-400 font-semibold text-center";
+                    statusBox.innerHTML = "POMPA KAPALI <br><span class='text-xs font-normal'>Kuyu statik durumda. Çatlatma yapılmadı.</span>";
+                }
+            }
+        }
+
+        function drawScene() {
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+
+            // 1. Formation (Rock)
+            ctx.fillStyle = '#451a03'; ctx.fillRect(0, 100, canvas.width, canvas.height-100);
+            ctx.fillStyle = '#78350f'; ctx.fillRect(0, CY - 80, canvas.width, 160); // Target Shale Zone
+            ctx.fillStyle = '#cbd5e1'; ctx.font="12px Arial"; ctx.fillText("TIGHT GAS SHALE", 20, CY - 60);
+
+            // 2. Hydraulic Fracture Shape (Dynamic)
+            if (fracLength > 0) {
+                // The open fluid fracture (Dark blue/black void)
+                ctx.fillStyle = '#0f172a';
+                ctx.beginPath(); ctx.ellipse(CX, CY, fracLength, fracWidth/2, 0, 0, Math.PI*2); ctx.fill();
+                
+                // 3. Proppant Bed (Sand packed inside)
+                if (proppedLength > 0) {
+                    ctx.fillStyle = '#ca8a04'; // Dark Amber
+                    ctx.beginPath(); ctx.ellipse(CX, CY, proppedLength, proppedWidth/2, 0, 0, Math.PI*2); ctx.fill();
+                    
+                    // Add sand texture dots
+                    ctx.fillStyle = '#a16207';
+                    for(let i=0; i<Math.min(300, proppedLength*2); i++) {
+                        let px = CX + (Math.random()-0.5)*proppedLength*2;
+                        let py = CY + (Math.random()-0.5)*proppedWidth;
+                        // Keep within ellipse bounds roughly
+                        if (Math.pow(px-CX, 2)/Math.pow(proppedLength,2) + Math.pow(py-CY, 2)/Math.pow(proppedWidth/2,2) <= 1) {
+                            ctx.fillRect(px, py, 2, 2);
+                        }
+                    }
+                }
+            }
+
+            // 4. Wellbore (Casing & Cement)
+            ctx.fillStyle = '#64748b'; ctx.fillRect(CX - 20, 100, 40, 350); // Casing
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(CX - 12, 100, 24, 350); // Inside Void
+            
+            // Perforations
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(CX - 30, CY - 15, 60, 30);
+
+            // 5. Surface Frac Fleet (Pump Trucks)
+            ctx.fillStyle = '#b91c1c'; ctx.fillRect(CX - 150, 60, 80, 40); ctx.fillRect(CX + 70, 60, 80, 40); 
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(CX - 140, 90, 20, 10); ctx.fillRect(CX - 90, 90, 20, 10); ctx.fillRect(CX + 80, 90, 20, 10); ctx.fillRect(CX + 130, 90, 20, 10);
+            
+            // High Pressure Manifold (Iron)
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth=6; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.moveTo(CX-110, 80); ctx.lineTo(CX, 80); ctx.lineTo(CX, 100); ctx.stroke(); 
+            ctx.beginPath(); ctx.moveTo(CX+110, 80); ctx.lineTo(CX, 80); ctx.stroke();
+            
+            ctx.fillStyle = '#fff'; ctx.font="bold 12px Arial"; ctx.textAlign="center";
+            ctx.fillText("FRAC PUMPS", CX - 110, 50); ctx.fillText("FRAC PUMPS", CX + 110, 50);
+            ctx.textAlign="left"; // reset
+
+            // Draw Plunger animations on trucks if pumping
+            if (pressure > 0) {
+                ctx.fillStyle = '#94a3b8';
+                let pt = (Date.now() / 50) % 10;
+                ctx.fillRect(CX - 100 + pt, 65, 10, 5); ctx.fillRect(CX + 100 - pt, 65, 10, 5);
+            }
+        }
+
+        function animate() {
+            updatePhysics();
+            drawScene();
+
+            // Handle Particles based on state
+            if (state === 'pumping') {
+                // Ensure array is full
+                while(injectionParticles.length < 300) injectionParticles.push(new InjectionParticle());
+                
+                injectionParticles.forEach(p => { 
+                    if (!p.active) p.reset(); 
+                    p.update(); p.draw(); 
+                });
+                // Silence production
+                productionParticles.forEach(p => p.active = false);
+            } 
+            else if (state === 'flowback') {
+                // Handle gas production
+                let activeCount = proppedLength > 0 ? Math.floor(proppedLength) : 0; // More proppant = more gas particles
+                
+                for(let i=0; i<productionParticles.length; i++) {
+                    let p = productionParticles[i];
+                    if (i < activeCount) {
+                        if (!p.active) p.reset();
+                        p.update(); p.draw();
+                    } else {
+                        p.active = false;
+                    }
+                }
+                // Silence injection
+                injectionParticles.forEach(p => p.active = false);
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        sliderP.addEventListener('input', updatePhysics);
+        sliderProp.addEventListener('input', updatePhysics);
+        
+        animate();
+
+    </script>
+</body>
+</html>

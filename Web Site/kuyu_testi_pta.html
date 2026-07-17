@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Well Testing (PTA) Diagnostic Plot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-indigo-400 mb-2">Well Testing (PTA) Diagnostic Plot</h1>
+            <p class="text-slate-400 text-sm">Bourdet Derivative (Log-Log) - Flow Regimes and Boundary Effects</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <div class="lg:col-span-1 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 border-b border-slate-600 pb-1">Reservoir Parameters</h2>
+                    <p class="text-[11px] text-slate-300 mb-4">
+                        Pressure changes during Build-up or Drawdown are plotted on a Log-Log scale. The <strong>Derivative</strong> curve allows us to read the reservoir's DNA.
+                    </p>
+                </div>
+
+                <div>
+                    <div class="slider-label"><span>Wellbore Storage (WBS / C)</span> <span id="val-wbs" class="font-mono text-sky-300">Medium</span></div>
+                    <input type="range" id="slider-wbs" min="1" max="10" step="1" value="5">
+                    <p class="text-[9px] text-slate-400 -mt-2 mb-2">Dominates early time (Unit Slope).</p>
+                </div>
+
+                <div>
+                    <div class="slider-label"><span>Skin Factor (S)</span> <span id="val-skin" class="font-mono text-red-400">0</span></div>
+                    <input type="range" id="slider-skin" min="-3" max="10" step="1" value="0" style="accent-color: #ef4444;">
+                    <p class="text-[9px] text-slate-400 -mt-2 mb-2">Shifts the ΔP curve vertically.</p>
+                </div>
+
+                <div class="mt-2">
+                    <h3 class="text-xs font-bold text-slate-400 mb-2 uppercase">Late Time Boundary Effect</h3>
+                    <select id="select-boundary" class="w-full bg-slate-900 border border-slate-600 text-slate-200 text-sm rounded p-2 outline-none">
+                        <option value="infinite">Infinite Acting (No Boundaries)</option>
+                        <option value="fault">Single Sealing Fault</option>
+                        <option value="parallel_faults">Channel / Parallel Faults</option>
+                        <option value="constant_p">Constant Pressure (Aquifer/Gas Cap)</option>
+                        <option value="dual_porosity">Dual Porosity (Naturally Fractured)</option>
+                        <option value="closed">Completely Closed (PSS)</option>
+                    </select>
+                </div>
+
+                <div class="mt-4 p-3 bg-slate-900 border border-indigo-500/50 rounded-lg">
+                    <div class="text-xs text-indigo-300 font-bold mb-1">Current Analysis</div>
+                    <div id="status-desc" class="text-xs text-slate-300 leading-relaxed">
+                        Derivative curve is flat (Zero slope). The well is currently in Infinite Acting Radial Flow (IARF); we can read permeability (k).
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3 relative flex flex-col justify-center bg-slate-900 rounded-xl border border-slate-700 p-4">
+                <canvas id="ptaCanvas" width="800" height="500" class="w-full h-auto bg-[#0f172a] rounded"></canvas>
+                
+                <div class="absolute top-6 right-6 bg-slate-800/80 p-3 rounded border border-slate-600 text-xs backdrop-blur">
+                    <div class="flex items-center gap-2 mb-2"><span class="w-4 h-1 bg-red-500"></span> ΔP (Pressure Change)</div>
+                    <div class="flex items-center gap-2 mb-2"><span class="w-4 h-1 bg-sky-400"></span> Bourdet Derivative</div>
+                    <hr class="border-slate-600 my-1">
+                    <div class="text-[10px] text-slate-400 mt-1">X: Elapsed Time Δt (hrs) - Log Scale</div>
+                    <div class="text-[10px] text-slate-400">Y: Pressure (psi) - Log Scale</div>
+                </div>
+
+                <div id="regime-overlay" class="flex justify-between w-full px-10 mt-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    <div class="text-center w-1/3 border-t border-slate-700 pt-1">Early Time (WBS)</div>
+                    <div class="text-center w-1/3 border-t border-slate-700 pt-1 text-emerald-500">Middle Time (Radial Flow)</div>
+                    <div class="text-center w-1/3 border-t border-slate-700 pt-1">Late Time (Boundaries)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('ptaCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderWbs = document.getElementById('slider-wbs');
+        const sliderSkin = document.getElementById('slider-skin');
+        const selectBoundary = document.getElementById('select-boundary');
+
+        let WBS = 5; let Skin = 0; let Boundary = 'infinite';
+
+        const logXMin = -2; const logXMax = 3;
+        const logYMin = 0;  const logYMax = 4;
+        
+        const pad = 40; const W = canvas.width - pad*2; const H = canvas.height - pad*2;
+
+        function getX(logX) { return pad + ((logX - logXMin) / (logXMax - logXMin)) * W; }
+        function getY(logY) { return pad + H - ((logY - logYMin) / (logYMax - logYMin)) * H; }
+
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+
+            for (let i = logXMin; i <= logXMax; i++) {
+                for(let j = 1; j < 10; j++) {
+                    let lx = i + Math.log10(j);
+                    if(lx <= logXMax) {
+                        ctx.beginPath(); ctx.moveTo(getX(lx), pad); ctx.lineTo(getX(lx), pad + H);
+                        ctx.strokeStyle = j === 1 ? '#334155' : '#1e293b';
+                        ctx.stroke();
+                        if(j === 1) { ctx.fillStyle = '#64748b'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText("10^" + i, getX(lx), pad + H + 15); }
+                    }
+                }
+            }
+
+            for (let i = logYMin; i <= logYMax; i++) {
+                for(let j = 1; j < 10; j++) {
+                    let ly = i + Math.log10(j);
+                    if(ly <= logYMax) {
+                        ctx.beginPath(); ctx.moveTo(pad, getY(ly)); ctx.lineTo(pad + W, getY(ly));
+                        ctx.strokeStyle = j === 1 ? '#334155' : '#1e293b';
+                        ctx.stroke();
+                        if(j === 1) { ctx.fillStyle = '#64748b'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText("10^" + i, pad - 5, getY(ly)); }
+                    }
+                }
+            }
+        }
+
+        function calculateCurves() {
+            let points = [];
+            for (let lx = logXMin; lx <= logXMax; lx += 0.05) {
+                let t = Math.pow(10, lx);
+                let dp_wbs = t * (200 / WBS);
+                let der_wbs = dp_wbs; 
+                let m = 50; 
+                let der_radial = m;
+                let dp_radial = m * Math.log(t) + m * (Skin + 5); 
+
+                if (Boundary === 'dual_porosity' && t > 0.5 && t < 20) {
+                    let dip = 0.5 * Math.exp(-Math.pow(Math.log10(t) - 0.7, 2) / 0.15);
+                    der_radial = m * (1 - dip);
+                }
+
+                let transition = 1 / (1 + Math.pow(t / (0.01 * WBS), 1.5));
+                let dp = dp_wbs * transition + dp_radial * (1 - transition);
+                let der = der_wbs * transition + der_radial * (1 - transition);
+
+                if (t > 10) {
+                    let boundaryEffect = 0;
+                    if (Boundary === 'fault') { boundaryEffect = m * (1 - Math.exp(-(t-10)/20)); der += boundaryEffect; dp += boundaryEffect * Math.log(t/10); } 
+                    else if (Boundary === 'parallel_faults') { boundaryEffect = m * Math.sqrt((t-10)/50); der += boundaryEffect; dp += boundaryEffect * 2; } 
+                    else if (Boundary === 'constant_p') { der *= Math.exp(-(t-10)/10); dp = dp_radial; } 
+                    else if (Boundary === 'closed') { boundaryEffect = m * (t / 50); der += boundaryEffect; dp += boundaryEffect; }
+                }
+
+                if (dp < 1) dp = 1; if (der < 1) der = 1;
+                points.push({ lx: lx, ldp: Math.log10(dp), lder: Math.log10(der) });
+            }
+            return points;
+        }
+
+        function updateUI() {
+            WBS = parseInt(sliderWbs.value); Skin = parseInt(sliderSkin.value); Boundary = selectBoundary.value;
+            document.getElementById('val-wbs').innerText = WBS; document.getElementById('val-skin').innerText = Skin;
+
+            let desc = "";
+            if (Boundary === 'infinite') desc = "Late time derivative remains flat (Infinite reservoir). No faults or boundaries are detected.";
+            if (Boundary === 'fault') desc = "Derivative doubles in late time and flattens again. Indicates a single Sealing Fault near the well.";
+            if (Boundary === 'parallel_faults') desc = "Derivative climbs continuously with a half-slope (0.5) in late time. Indicates linear Channel flow (Parallel Faults).";
+            if (Boundary === 'constant_p') desc = "Derivative abruptly plunges to zero in late time. Pressure drop has halted, indicating a Constant Pressure boundary (Aquifer or Gas Cap).";
+            if (Boundary === 'dual_porosity') desc = "Derivative shows a 'V' shaped dip during middle time (Radial Flow). This indicates a Naturally Fractured (Dual Porosity) formation where flow transitions from fractures to matrix.";
+            if (Boundary === 'closed') desc = "Derivative climbs with a unit slope (1.0) in late time. The pressure transient has hit all boundaries (Pseudo-Steady State / Closed Reservoir).";
+            
+            document.getElementById('status-desc').innerText = desc;
+        }
+
+        function draw() {
+            updateUI(); drawGrid();
+            let curves = calculateCurves();
+
+            ctx.beginPath(); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3;
+            for(let i=0; i<curves.length; i++) { let x = getX(curves[i].lx); let y = getY(curves[i].ldp); if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+            ctx.stroke();
+
+            ctx.beginPath(); ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3;
+            for(let i=0; i<curves.length; i++) { let x = getX(curves[i].lx); let y = getY(curves[i].lder); if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)'; ctx.fillRect(pad, pad, (WBS / 10) * (W/3), H);
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            let radialY = getY(Math.log10(50));
+            ctx.beginPath(); ctx.moveTo(pad, radialY); ctx.lineTo(pad+W, radialY); ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        sliderWbs.addEventListener('input', draw); sliderSkin.addEventListener('input', draw); selectBoundary.addEventListener('change', draw); draw();
+    </script>
+</body>
+</html>
