@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Well Completion Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .control-panel { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(10px); }
+        input[type=range] { accent-color: #3b82f6; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <div class="max-w-5xl w-full">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-blue-400 mb-2">Well Completion Simulator</h1>
+            <p class="text-slate-400 text-sm">Production Engineering: Open-Hole, Cased-Hole, and Frac-Pack Flow Dynamics</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                <div class="control-panel p-5 rounded-xl border border-slate-700">
+                    <h2 class="text-lg font-semibold text-white mb-4 border-b border-slate-600 pb-2">1. Design Selection</h2>
+                    <div class="flex flex-col gap-3 mb-6">
+                        <button onclick="setMode('ohgp')" id="btn-ohgp" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded transition">Open-Hole Gravel Pack (OHGP)</button>
+                        <button onclick="setMode('cased')" id="btn-cased" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition">Cased & Perforated</button>
+                        <button onclick="setMode('frac')" id="btn-frac" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded transition">Frac-Pack</button>
+                    </div>
+
+                    <h2 class="text-lg font-semibold text-white mb-4 border-b border-slate-600 pb-2">2. Flow Parameters</h2>
+                    <label class="block text-sm text-slate-300 mb-2">Production Rate (q): <span id="rate-display" class="font-bold text-blue-400">50</span> MMscf/d</label>
+                    <input type="range" id="flow-rate" min="10" max="100" value="50" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <div class="control-panel p-5 rounded-xl border border-slate-700">
+                    <h2 class="text-lg font-semibold text-white mb-4 border-b border-slate-600 pb-2">Engineering Dashboard</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600">
+                            <div class="text-xs text-slate-400">Flow Area (A)</div>
+                            <div id="metric-a" class="text-xl font-bold text-emerald-400">High</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600">
+                            <div class="text-xs text-slate-400">Entry Velocity (v)</div>
+                            <div id="metric-v" class="text-xl font-bold text-yellow-400">Low</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600">
+                            <div class="text-xs text-slate-400">Turbulence (Dq)</div>
+                            <div id="metric-dq" class="text-xl font-bold text-red-400">~ 0</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600">
+                            <div class="text-xs text-slate-400">Total Skin (S')</div>
+                            <div id="metric-s" class="text-xl font-bold text-white">+ 0.5</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-xs text-slate-400 bg-slate-900 p-2 rounded">
+                        <strong>Rule:</strong> <br> v = q / A <br> Non-Darcy Turbulence (Dq) ∝ v²
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 relative">
+                <canvas id="simCanvas" width="600" height="700" class="w-full h-auto"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-900/80 p-3 rounded text-xs border border-slate-700 backdrop-blur">
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#8B4513]"></span> Reservoir Rock</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-gray-400"></span> Steel Casing & Tubing</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-gray-700"></span> Cement</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-yellow-600"></span> Gravel Pack (Proppant)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 border border-gray-400" style="border-style: dashed;"></span> Screen</div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_5px_red]"></span> Gas Molecule</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const flowRateInput = document.getElementById('flow-rate');
+        const rateDisplay = document.getElementById('rate-display');
+        
+        let mode = 'ohgp'; 
+        let flowRate = 50;
+        let particles = [];
+        
+        const WIDTH = canvas.width; const HEIGHT = canvas.height; const CENTER_X = WIDTH / 2; const RESERVOIR_TOP = 150; 
+        
+        function updateMetrics() {
+            rateDisplay.innerText = flowRate;
+            let area, velocityStr, dq, s_total, v_val;
+            
+            if (mode === 'ohgp') {
+                area = "Large (OH)"; v_val = (flowRate / 100) * 1.5; velocityStr = v_val < 0.8 ? "Low" : "Moderate"; dq = (v_val * v_val * 0.1).toFixed(2); s_total = (0.5 + parseFloat(dq)).toFixed(2);
+            } else if (mode === 'cased') {
+                area = "Narrow (Perfs)"; v_val = (flowRate / 100) * 8; velocityStr = v_val < 3 ? "High" : "EXTREME (Chaotic)"; dq = (v_val * v_val * 0.8).toFixed(2); s_total = (5.0 + parseFloat(dq)).toFixed(2);
+            } else if (mode === 'frac') {
+                area = "Very Large (Frac)"; v_val = (flowRate / 100) * 3; velocityStr = v_val < 1.5 ? "Low" : "Moderate"; dq = (v_val * v_val * 0.2).toFixed(2); s_total = (-2.0 + parseFloat(dq)).toFixed(2); 
+            }
+            
+            document.getElementById('metric-a').innerText = area; document.getElementById('metric-v').innerText = velocityStr; document.getElementById('metric-dq').innerText = "+ " + dq; document.getElementById('metric-s').innerText = s_total;
+            document.getElementById('metric-dq').style.color = dq > 5 ? '#ef4444' : (dq > 1 ? '#f59e0b' : '#34d399');
+            document.getElementById('metric-v').style.color = v_val > 4 ? '#ef4444' : (v_val > 1.5 ? '#f59e0b' : '#34d399');
+        }
+
+        function setMode(newMode) {
+            mode = newMode; particles = []; 
+            for (let i = 0; i < 300; i++) particles.push(new Particle());
+            
+            document.querySelectorAll('button[id^="btn-"]').forEach(btn => { btn.classList.remove('bg-blue-600', 'hover:bg-blue-500'); btn.classList.add('bg-slate-700', 'hover:bg-slate-600'); });
+            document.getElementById('btn-' + mode).classList.remove('bg-slate-700', 'hover:bg-slate-600'); document.getElementById('btn-' + mode).classList.add('bg-blue-600', 'hover:bg-blue-500');
+            updateMetrics();
+        }
+
+        flowRateInput.addEventListener('input', (e) => { flowRate = parseInt(e.target.value); updateMetrics(); });
+
+        class Particle {
+            constructor() { this.reset(); this.y = RESERVOIR_TOP + Math.random() * (HEIGHT - RESERVOIR_TOP); this.x = Math.random() > 0.5 ? Math.random() * (CENTER_X - 150) : CENTER_X + 150 + Math.random() * (CENTER_X - 150); }
+            reset() { this.y = RESERVOIR_TOP + Math.random() * (HEIGHT - RESERVOIR_TOP); this.x = Math.random() > 0.5 ? Math.random() * 50 : WIDTH - Math.random() * 50; this.vx = 0; this.vy = 0; this.state = 'rock'; }
+
+            update() {
+                let speedMultiplier = flowRate / 50; let targetX = CENTER_X; let targetY = this.y;
+
+                if (mode === 'ohgp') {
+                    if (this.state === 'rock') {
+                        let dirX = (CENTER_X - this.x) > 0 ? 1 : -1; this.vx = dirX * 0.5 * speedMultiplier; this.vy = (Math.random() - 0.5) * 0.2;
+                        if (Math.abs(this.x - CENTER_X) < 100) this.state = 'gravel';
+                    } else if (this.state === 'gravel') {
+                        let dirX = (CENTER_X - this.x) > 0 ? 1 : -1; this.vx = dirX * 1.0 * speedMultiplier; this.vy = (Math.random() - 0.5) * 0.5; 
+                        if (Math.abs(this.x - CENTER_X) < 40) this.state = 'screen';
+                    } else if (this.state === 'screen') {
+                        this.vx = (CENTER_X - this.x) * 0.1; this.vy = -3.0 * speedMultiplier;
+                    }
+                } 
+                else if (mode === 'cased') {
+                    let perfs = [250, 400, 550]; let closestPerf = perfs.reduce((a, b) => Math.abs(b - this.y) < Math.abs(a - this.y) ? b : a);
+                    if (this.state === 'rock') {
+                        let dx = (this.x < CENTER_X ? CENTER_X - 60 : CENTER_X + 60) - this.x; let dy = closestPerf - this.y; let dist = Math.sqrt(dx*dx + dy*dy);
+                        this.vx = (dx/dist) * 1.0 * speedMultiplier; this.vy = (dy/dist) * 1.0 * speedMultiplier;
+                        if (dist > 20) { this.vx += (Math.random() - 0.5) * 0.5; this.vy += (Math.random() - 0.5) * 0.5; }
+                        if (Math.abs(this.x - CENTER_X) < 80 && Math.abs(this.y - closestPerf) < 15) this.state = 'perforation';
+                    } else if (this.state === 'perforation') {
+                        let dirX = (CENTER_X - this.x) > 0 ? 1 : -1; this.vx = dirX * 8.0 * speedMultiplier; this.vy = (Math.random() - 0.5) * 4.0 * speedMultiplier; 
+                        if (Math.abs(this.x - CENTER_X) < 30) this.state = 'tubing';
+                    } else if (this.state === 'tubing') {
+                        this.vx = (CENTER_X - this.x) * 0.2; this.vy = -4.0 * speedMultiplier;
+                    }
+                }
+                else if (mode === 'frac') {
+                    let perfs = [400]; let closestPerf = perfs[0];
+                    if (this.state === 'rock') {
+                        let targetFracX = this.x < CENTER_X ? CENTER_X - 100 : CENTER_X + 100; let dx = targetFracX - this.x; let dy = closestPerf - this.y; let dist = Math.sqrt(dx*dx + dy*dy);
+                        this.vx = (dx/dist) * 1.2 * speedMultiplier; this.vy = (dy/dist) * 1.5 * speedMultiplier;
+                        if (Math.abs(this.y - closestPerf) < 40 && Math.abs(this.x - CENTER_X) < 200) this.state = 'frac';
+                    } else if (this.state === 'frac') {
+                        let dx = (this.x < CENTER_X ? CENTER_X - 40 : CENTER_X + 40) - this.x; let dy = closestPerf - this.y; let dist = Math.sqrt(dx*dx + dy*dy);
+                        this.vx = (dx/dist) * 2.0 * speedMultiplier; this.vy = (dy/dist) * 2.0 * speedMultiplier;
+                        if (Math.abs(this.x - CENTER_X) < 60) this.state = 'perforation';
+                    } else if (this.state === 'perforation') {
+                        let dirX = (CENTER_X - this.x) > 0 ? 1 : -1; this.vx = dirX * 5.0 * speedMultiplier; this.vy = (Math.random() - 0.5) * 1.0; 
+                        if (Math.abs(this.x - CENTER_X) < 30) this.state = 'tubing';
+                    } else if (this.state === 'tubing') {
+                        this.vx = (CENTER_X - this.x) * 0.2; this.vy = -4.0 * speedMultiplier;
+                    }
+                }
+                this.x += this.vx; this.y += this.vy;
+                if (this.y < 0) this.reset();
+            }
+            draw() {
+                ctx.fillStyle = (mode === 'cased' && this.state === 'perforation') ? '#ffeb3b' : '#ef4444'; 
+                ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 5; ctx.shadowColor = 'red'; ctx.fill(); ctx.shadowBlur = 0;
+            }
+        }
+
+        for (let i = 0; i < 300; i++) particles.push(new Particle());
+
+        function drawBackground() {
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = '#8B4513'; ctx.fillRect(0, RESERVOIR_TOP, WIDTH, HEIGHT - RESERVOIR_TOP);
+
+            ctx.fillStyle = '#9ca3af'; ctx.fillRect(CENTER_X - 60, 0, 120, RESERVOIR_TOP);
+            ctx.fillStyle = '#4b5563'; ctx.fillRect(CENTER_X - 80, 0, 20, RESERVOIR_TOP); ctx.fillRect(CENTER_X + 60, 0, 20, RESERVOIR_TOP);
+            ctx.fillStyle = '#d1d5db'; ctx.fillRect(CENTER_X - 30, 0, 60, RESERVOIR_TOP - 20); 
+            ctx.fillStyle = '#111827'; ctx.fillRect(CENTER_X - 60, RESERVOIR_TOP - 30, 120, 30);
+
+            if (mode === 'ohgp') {
+                ctx.fillStyle = '#1e293b'; ctx.fillRect(CENTER_X - 100, RESERVOIR_TOP, 200, HEIGHT);
+                ctx.fillStyle = '#ca8a04'; ctx.fillRect(CENTER_X - 100, RESERVOIR_TOP, 200, HEIGHT);
+                ctx.fillStyle = '#a16207';
+                for(let i=0; i<100; i++) { ctx.beginPath(); ctx.arc(CENTER_X - 100 + Math.random()*200, RESERVOIR_TOP + Math.random()*(HEIGHT-RESERVOIR_TOP), 2, 0, Math.PI*2); ctx.fill(); }
+
+                ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 4; ctx.setLineDash([5, 5]);
+                ctx.beginPath(); ctx.moveTo(CENTER_X - 40, RESERVOIR_TOP); ctx.lineTo(CENTER_X - 40, HEIGHT - 50); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(CENTER_X + 40, RESERVOIR_TOP); ctx.lineTo(CENTER_X + 40, HEIGHT - 50); ctx.stroke(); ctx.setLineDash([]); 
+                
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(CENTER_X - 38, RESERVOIR_TOP, 76, HEIGHT - 50);
+                ctx.fillStyle = '#9ca3af'; ctx.fillRect(CENTER_X - 40, HEIGHT - 50, 80, 10);
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(CENTER_X - 25, RESERVOIR_TOP - 30, 50, 30);
+            } 
+            else if (mode === 'cased') {
+                ctx.fillStyle = '#4b5563'; ctx.fillRect(CENTER_X - 80, RESERVOIR_TOP, 160, HEIGHT);
+                ctx.fillStyle = '#9ca3af'; ctx.fillRect(CENTER_X - 60, RESERVOIR_TOP, 120, HEIGHT);
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(CENTER_X - 40, RESERVOIR_TOP, 80, HEIGHT);
+                ctx.fillRect(CENTER_X - 25, RESERVOIR_TOP - 30, 50, 30);
+
+                let perfs = [250, 400, 550];
+                ctx.fillStyle = '#0f172a'; 
+                perfs.forEach(y => {
+                    ctx.fillRect(CENTER_X - 120, y - 8, 80, 16); ctx.fillRect(CENTER_X + 40, y - 8, 80, 16);
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.beginPath(); ctx.arc(CENTER_X - 120, y, 15, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(CENTER_X + 120, y, 15, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#0f172a'; 
+                });
+            }
+            else if (mode === 'frac') {
+                ctx.fillStyle = '#4b5563'; ctx.fillRect(CENTER_X - 80, RESERVOIR_TOP, 160, HEIGHT);
+                ctx.fillStyle = '#9ca3af'; ctx.fillRect(CENTER_X - 60, RESERVOIR_TOP, 120, HEIGHT);
+                ctx.fillStyle = '#0f172a'; ctx.fillRect(CENTER_X - 40, RESERVOIR_TOP, 80, HEIGHT);
+                ctx.fillRect(CENTER_X - 25, RESERVOIR_TOP - 30, 50, 30);
+
+                let fracY = 400;
+                ctx.fillStyle = '#ca8a04'; 
+                ctx.beginPath(); ctx.moveTo(CENTER_X - 60, fracY - 20); ctx.lineTo(20, fracY - 60); ctx.lineTo(20, fracY + 60); ctx.lineTo(CENTER_X - 60, fracY + 20); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(CENTER_X + 60, fracY - 20); ctx.lineTo(WIDTH - 20, fracY - 60); ctx.lineTo(WIDTH - 20, fracY + 60); ctx.lineTo(CENTER_X + 60, fracY + 20); ctx.fill();
+
+                ctx.fillStyle = '#a16207';
+                for(let i=0; i<150; i++) {
+                    ctx.beginPath(); ctx.arc(50 + Math.random()*(CENTER_X-90), fracY-40 + Math.random()*80, 2, 0, Math.PI*2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(CENTER_X+40 + Math.random()*(WIDTH/2 - 60), fracY-40 + Math.random()*80, 2, 0, Math.PI*2); ctx.fill();
+                }
+
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(CENTER_X - 60, fracY - 15, 20, 30); ctx.fillRect(CENTER_X + 40, fracY - 15, 20, 30);
+            }
+        }
+
+        function animate() {
+            drawBackground();
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+
+        updateMetrics(); animate();
+    </script>
+</body>
+</html>

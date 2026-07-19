@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primary Cementing & U-Tube Dynamics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .control-btn { transition: all 0.2s ease; }
+        .control-btn:active:not(:disabled) { transform: scale(0.95); }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1300px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-slate-300 mb-2">Primary Cementing & U-Tube Dynamics</h1>
+            <p class="text-slate-400 text-sm">Casing Cementation, Wiper Plugs, Fluid Displacement, and Plug Bumping</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Telemetry -->
+            <div class="lg:col-span-4 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl flex flex-col gap-4">
+                
+                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2">Operation Control</h2>
+                    
+                    <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                        Pump spacer and cement to displace the drilling mud. Observe the <strong>U-Tube Effect</strong> as heavy cement falls down the casing (pressure drops) and climbs up the annulus (pressure rises).
+                    </p>
+
+                    <div class="flex flex-col gap-3">
+                        <div class="flex justify-between items-center text-xs text-slate-300">
+                            <span>Pump Rate (bpm):</span>
+                            <span id="val-rate" class="font-bold text-emerald-400">5.0 bpm</span>
+                        </div>
+                        <input type="range" id="slider-rate" min="1" max="10" step="0.5" value="5" class="w-full accent-emerald-500">
+                        
+                        <button onclick="startJob()" id="btn-start" class="w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] tracking-wide">
+                            ▶ START CEMENT JOB
+                        </button>
+                        <button onclick="resetJob()" class="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold border border-slate-600">
+                            🔄 RESET SYSTEM
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Telemetry Dashboard -->
+                <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 shadow-inner flex flex-col gap-3">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">Live Telemetry</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Surface Pressure</div>
+                            <div id="val-pressure" class="text-2xl font-bold text-amber-400">0 psi</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Bottom Hole Press.</div>
+                            <div id="val-bhp" class="text-2xl font-bold text-red-400">0 psi</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center col-span-2">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Volume Pumped</div>
+                            <div class="w-full bg-slate-900 rounded-full h-3 mt-1 border border-slate-700 overflow-hidden relative">
+                                <div id="bar-volume" class="bg-sky-500 h-full transition-all" style="width: 0%"></div>
+                            </div>
+                            <div id="val-volume" class="text-sm font-bold text-sky-300 mt-1">0 / 410 bbl</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Monitor -->
+                <div id="status-box" class="bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all text-center flex-1 flex items-center justify-center">
+                    IDLE <br><span class="text-xs font-normal mt-1 block">Well is static and full of drilling mud.</span>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas & Legend -->
+            <div class="lg:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[700px]">
+                <canvas id="cementCanvas" width="800" height="680" class="w-full h-full object-contain"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Fluid Properties (PPG)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#854d0e] border border-slate-500"></span> Drilling Mud (10.0 ppg)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#0ea5e9]"></span> Spacer Fluid (11.0 ppg)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#94a3b8]"></span> Lead Cement (13.5 ppg)</div>
+                    <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#475569]"></span> Tail Cement (15.8 ppg)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-2 bg-[#ef4444] rounded-sm"></span> Bottom Wiper Plug</div>
+                    <div class="flex items-center gap-2"><span class="w-4 h-2 bg-[#000000] border border-slate-500 rounded-sm"></span> Top Wiper Plug</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('cementCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderRate = document.getElementById('slider-rate');
+
+        // Geometry Constants
+        const CX = canvas.width / 2;
+        const SURF_Y = 50;
+        const WELL_DEPTH = 600; // Total canvas depth for well
+        const CASING_W = 40;
+        const HOLE_W = 80;
+        
+        // Fluid Volumes (1D representation)
+        const VC = 500; // Casing Volume
+        const VA = 450; // Annulus Volume
+        
+        const VOL_SPACER = 50;
+        const VOL_LEAD = 200;
+        const VOL_TAIL = 120;
+        
+        // Total volume required to bump the plug (displacement volume = VC)
+        const MAX_PUMP_VOL = VC + VOL_SPACER + VOL_LEAD + VOL_TAIL;
+
+        // Fluid Densities (ppg)
+        const RHO_MUD = 10.0;
+        const RHO_SPACER = 11.0;
+        const RHO_LEAD = 13.5;
+        const RHO_TAIL = 15.8;
+
+        // State Variables
+        let state = 'idle'; // idle, pumping, bumped
+        let vPumped = 0; // Cumulative volume pumped
+        let pumpRate = 5;
+        let surfacePressure = 0;
+        let bottomHolePressure = 0;
+        let animationId;
+
+        // UI Elements
+        const valRate = document.getElementById('val-rate');
+        const valPress = document.getElementById('val-pressure');
+        const valBhp = document.getElementById('val-bhp');
+        const valVol = document.getElementById('val-volume');
+        const barVol = document.getElementById('bar-volume');
+        const statusBox = document.getElementById('status-box');
+        const btnStart = document.getElementById('btn-start');
+
+        // Fluid identification function
+        function getFluidAt(vEntered) {
+            // vEntered is the amount of fluid that has passed into the system BEFORE this specific slice of fluid.
+            // A fluid slice at distance X from the wellhead entered the system when vPumped was (vPumped - X).
+            
+            if (vEntered < 0) return { type: 'mud', color: '#854d0e', rho: RHO_MUD };
+            if (vEntered < VOL_SPACER) return { type: 'spacer', color: '#0ea5e9', rho: RHO_SPACER };
+            if (vEntered < VOL_SPACER + VOL_LEAD) return { type: 'lead', color: '#94a3b8', rho: RHO_LEAD };
+            if (vEntered < VOL_SPACER + VOL_LEAD + VOL_TAIL) return { type: 'tail', color: '#475569', rho: RHO_TAIL };
+            return { type: 'displacement', color: '#a16207', rho: RHO_MUD }; // Mud pushing the top plug
+        }
+
+        function calculateHydrostatics() {
+            // Convert Canvas Pixels to Depth (ft)
+            // Let's assume the well is 10,000 ft deep.
+            const TOTAL_TVD = 10000;
+            
+            let hp_casing = 0;
+            let hp_annulus = 0;
+
+            // Integrate over Casing
+            const steps = 100;
+            for (let i = 0; i < steps; i++) {
+                let x_casing = (i / steps) * VC; // Distance along casing volume
+                let fluid = getFluidAt(vPumped - x_casing);
+                hp_casing += 0.052 * fluid.rho * (TOTAL_TVD / steps);
+            }
+
+            // Integrate over Annulus
+            for (let i = 0; i < steps; i++) {
+                let x_annulus = VC + (i / steps) * VA; // Distance along annulus volume
+                let fluid = getFluidAt(vPumped - x_annulus);
+                hp_annulus += 0.052 * fluid.rho * (TOTAL_TVD / steps);
+            }
+
+            bottomHolePressure = hp_annulus; // Assuming static condition mostly at bottom
+
+            // U-Tube Surface Pressure = Hydrostatic Annulus - Hydrostatic Casing + Friction
+            let friction = pumpRate * 50; 
+            if (state === 'idle' || state === 'bumped') friction = 0;
+
+            surfacePressure = hp_annulus - hp_casing + friction;
+            
+            // Free-fall (U-tube vacuum effect): Surface pressure cannot be negative in standard gauges
+            if (surfacePressure < 0) surfacePressure = 0; 
+            
+            // Spike pressure when bumped
+            if (state === 'bumped') surfacePressure += 1500; // Pressure test on bumped plug
+
+            return { hp_casing, hp_annulus };
+        }
+
+        function updateUI() {
+            valRate.innerText = pumpRate.toFixed(1) + " bpm";
+            valPress.innerText = Math.floor(surfacePressure).toLocaleString() + " psi";
+            valBhp.innerText = Math.floor(bottomHolePressure).toLocaleString() + " psi";
+            
+            valVol.innerText = Math.floor(vPumped) + " / " + MAX_PUMP_VOL + " bbl";
+            let progress = (vPumped / MAX_PUMP_VOL) * 100;
+            barVol.style.width = Math.min(progress, 100) + "%";
+
+            // Status Logic
+            if (state === 'bumped') {
+                statusBox.className = "bg-purple-900/80 border border-purple-500 p-4 rounded-xl text-purple-200 text-sm font-semibold transition-all text-center flex-1 flex items-center justify-center animate-pulse shadow-[0_0_20px_rgba(168,85,247,0.4)]";
+                statusBox.innerHTML = "🎯 PLUG BUMPED! <br><span class='text-xs font-normal mt-1 block'>Top plug hit the float collar. Pressure spiked to 1500+ psi. Cement job is complete and secured!</span>";
+                valPress.className = "text-2xl font-bold text-red-500 animate-pulse";
+            } else if (state === 'pumping') {
+                let currentOp = "Pumping Displacing Mud...";
+                if (vPumped < VOL_SPACER) currentOp = "Pumping Spacer Fluid...";
+                else if (vPumped < VOL_SPACER + VOL_LEAD) currentOp = "Pumping Lead Cement...";
+                else if (vPumped < VOL_SPACER + VOL_LEAD + VOL_TAIL) currentOp = "Pumping Tail Cement...";
+                
+                // U-Tube tracking
+                let uTubeAlert = "";
+                if (surfacePressure === 0) uTubeAlert = "<br><span class='text-amber-400 text-xs font-bold'>⚠️ U-TUBE EFFECT: Heavy cement in casing is in free-fall (Vacuum).</span>";
+                else if (surfacePressure > 500 && vPumped > VC) uTubeAlert = "<br><span class='text-emerald-400 text-xs font-bold'>⬆️ LIFTING: Heavy cement is now climbing the annulus. Pressure rising.</span>";
+
+                statusBox.className = "bg-sky-900/50 border border-sky-500 p-4 rounded-xl text-sky-200 text-sm font-semibold transition-all text-center flex-1 flex flex-col items-center justify-center";
+                statusBox.innerHTML = `🔄 ${currentOp} ${uTubeAlert}`;
+                valPress.className = "text-2xl font-bold text-amber-400";
+            } else {
+                statusBox.className = "bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all text-center flex-1 flex items-center justify-center";
+                statusBox.innerHTML = "IDLE <br><span class='text-xs font-normal mt-1 block'>Well is static. Ready to pump.</span>";
+                valPress.className = "text-2xl font-bold text-amber-400";
+            }
+        }
+
+        function startJob() {
+            if (state === 'idle') {
+                state = 'pumping';
+                btnStart.innerText = "⏸ PAUSE JOB";
+                btnStart.className = "w-full mt-2 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(245,158,11,0.4)] tracking-wide";
+            } else if (state === 'pumping') {
+                state = 'idle';
+                btnStart.innerText = "▶ RESUME JOB";
+                btnStart.className = "w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] tracking-wide";
+            }
+        }
+
+        function resetJob() {
+            state = 'idle';
+            vPumped = 0;
+            surfacePressure = 0;
+            bottomHolePressure = 0;
+            btnStart.disabled = false;
+            btnStart.innerText = "▶ START CEMENT JOB";
+            btnStart.className = "w-full mt-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] tracking-wide";
+            updateUI();
+        }
+
+        function drawScenery() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Subsurface formation
+            ctx.fillStyle = '#451a03'; ctx.fillRect(0, SURF_Y, canvas.width, canvas.height - SURF_Y);
+            ctx.fillStyle = '#713f12'; ctx.fillRect(0, WELL_DEPTH - 100, canvas.width, 100); // Target Zone
+
+            // Open Hole (Borehole walls)
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(CX - HOLE_W/2, SURF_Y, HOLE_W, WELL_DEPTH - SURF_Y);
+            
+            // Surface Equipment Base
+            ctx.fillStyle = '#475569'; ctx.fillRect(CX - 80, SURF_Y - 20, 160, 20); // Cellar/Floor
+            ctx.fillStyle = '#b91c1c'; ctx.fillRect(CX - 30, SURF_Y - 70, 60, 50); // Cement Head
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(CX - 15, SURF_Y - 90, 30, 20); // Top entry
+
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(CX + 30, SURF_Y - 45); ctx.lineTo(CX + 100, SURF_Y - 45); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.font="10px Arial"; ctx.fillText("Pump Line \u2190", CX + 40, SURF_Y - 55);
+        }
+
+        function drawFluids() {
+            // Draw fluid inside Annulus
+            // Annulus goes from Bottom (WELL_DEPTH) to Top (SURF_Y)
+            let annH = WELL_DEPTH - SURF_Y;
+            const annSteps = 100;
+            let stepH_A = annH / annSteps;
+            let volStep_A = VA / annSteps;
+
+            for (let i = 0; i < annSteps; i++) {
+                // Volume position in the 1D path
+                let x_annulus = VC + (i * volStep_A);
+                let fluid = getFluidAt(vPumped - x_annulus);
+                
+                ctx.fillStyle = fluid.color;
+                let yPos = WELL_DEPTH - ((i + 1) * stepH_A); // Draw from bottom up
+                
+                // Left Annulus
+                ctx.fillRect(CX - HOLE_W/2, yPos, (HOLE_W - CASING_W)/2, stepH_A + 1);
+                // Right Annulus
+                ctx.fillRect(CX + CASING_W/2, yPos, (HOLE_W - CASING_W)/2, stepH_A + 1);
+            }
+
+            // Draw fluid inside Casing
+            // Casing goes from Top (SURF_Y) to Bottom (WELL_DEPTH)
+            let casH = WELL_DEPTH - SURF_Y;
+            const casSteps = 100;
+            let stepH_C = casH / casSteps;
+            let volStep_C = VC / casSteps;
+
+            for (let i = 0; i < casSteps; i++) {
+                let x_casing = (i * volStep_C);
+                let fluid = getFluidAt(vPumped - x_casing);
+                
+                ctx.fillStyle = fluid.color;
+                let yPos = SURF_Y + (i * stepH_C); // Draw from top down
+                
+                ctx.fillRect(CX - CASING_W/2 + 4, yPos, CASING_W - 8, stepH_C + 1);
+            }
+        }
+
+        function drawHardwareAndPlugs() {
+            // Casing Steel Walls
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(CX - CASING_W/2, SURF_Y, 4, WELL_DEPTH - SURF_Y); // Left wall
+            ctx.fillRect(CX + CASING_W/2 - 4, SURF_Y, 4, WELL_DEPTH - SURF_Y); // Right wall
+
+            // Float Shoe (Bottom curve)
+            ctx.fillStyle = '#94a3b8';
+            ctx.beginPath();
+            ctx.moveTo(CX - CASING_W/2, WELL_DEPTH);
+            ctx.lineTo(CX + CASING_W/2, WELL_DEPTH);
+            ctx.quadraticCurveTo(CX, WELL_DEPTH + 20, CX - CASING_W/2, WELL_DEPTH);
+            ctx.fill();
+
+            // Float Collar (Valve landing seat near bottom)
+            let collarY = WELL_DEPTH - 60;
+            ctx.fillStyle = '#b91c1c'; // Red steel component
+            ctx.fillRect(CX - CASING_W/2 + 4, collarY, 10, 15);
+            ctx.fillRect(CX + CASING_W/2 - 14, collarY, 10, 15);
+
+            // --- PLUGS ---
+            let px_per_vol_cas = (WELL_DEPTH - SURF_Y) / VC;
+
+            // 1. Bottom Plug (Separates Mud/Spacer and Lead Cement)
+            // Position = vPumped - VOL_SPACER
+            let bp_vol = vPumped - VOL_SPACER;
+            if (bp_vol > 0) {
+                let bp_y;
+                if (bp_vol >= VC) {
+                    // Plug stops at Float Collar
+                    bp_y = collarY - 15; 
+                } else {
+                    // Plug traveling down casing
+                    bp_y = SURF_Y + (bp_vol * px_per_vol_cas) - 15;
+                }
+                
+                // Draw Bottom Plug (Red with hole through it, because diaphragm breaks)
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath(); ctx.roundRect(CX - CASING_W/2 + 4, bp_y, CASING_W - 8, 15, 3); ctx.fill();
+                
+                // Diaphragm hole (black inside if stopped, meaning broken)
+                if (bp_vol >= VC) {
+                    ctx.fillStyle = '#000'; ctx.fillRect(CX - 4, bp_y, 8, 15);
+                } else {
+                    // Wipers
+                    ctx.fillStyle = '#000'; ctx.fillRect(CX - CASING_W/2 + 2, bp_y + 2, CASING_W - 4, 3); ctx.fillRect(CX - CASING_W/2 + 2, bp_y + 10, CASING_W - 4, 3);
+                }
+            }
+
+            // 2. Top Plug (Separates Tail Cement and Displacement Mud)
+            // Position = vPumped - (VOL_SPACER + VOL_LEAD + VOL_TAIL)
+            let tp_vol = vPumped - (VOL_SPACER + VOL_LEAD + VOL_TAIL);
+            if (tp_vol > 0) {
+                let tp_y;
+                if (tp_vol >= VC) {
+                    // Plug BUMPS onto bottom plug!
+                    tp_y = collarY - 30; 
+                    
+                    if (state === 'pumping') {
+                        state = 'bumped'; // TRIGGER BUMP EVENT
+                        btnStart.disabled = true;
+                        btnStart.innerText = "✅ JOB COMPLETE";
+                        btnStart.className = "w-full mt-2 py-3 bg-slate-700 text-slate-400 rounded-lg font-bold border border-slate-600";
+                    }
+                } else {
+                    // Plug traveling down casing
+                    tp_y = SURF_Y + (tp_vol * px_per_vol_cas) - 15;
+                }
+                
+                // Draw Top Plug (Solid Black)
+                ctx.fillStyle = '#000000';
+                ctx.beginPath(); ctx.roundRect(CX - CASING_W/2 + 4, tp_y, CASING_W - 8, 15, 3); ctx.fill();
+                // Wipers (Yellow to stand out)
+                ctx.fillStyle = '#eab308'; ctx.fillRect(CX - CASING_W/2 + 2, tp_y + 2, CASING_W - 4, 3); ctx.fillRect(CX - CASING_W/2 + 2, tp_y + 10, CASING_W - 4, 3);
+            }
+        }
+
+        function animate() {
+            pumpRate = parseFloat(sliderRate.value);
+
+            if (state === 'pumping' && vPumped < MAX_PUMP_VOL) {
+                vPumped += pumpRate * 0.1; // Animation speed scaling
+                if (vPumped > MAX_PUMP_VOL) vPumped = MAX_PUMP_VOL;
+            }
+
+            calculateHydrostatics();
+            updateUI();
+
+            drawScenery();
+            drawFluids();
+            drawHardwareAndPlugs();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Initialize
+        updateUI();
+        animate();
+
+    </script>
+</body>
+</html>

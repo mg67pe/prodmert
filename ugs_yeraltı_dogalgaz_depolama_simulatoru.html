@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UGS Dynamics Simulator — Underground Gas Storage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); }
+        .mode-btn { transition: all 0.2s; border-left: 4px solid transparent; }
+        .mode-btn.active { background-color: #1e293b; border-left-color: #38bdf8; color: #38bdf8; font-weight: bold; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .mode-btn:hover:not(.active) { background-color: #334155; }
+        .season-btn { transition: all 0.2s; border-left: 4px solid transparent; }
+        .season-btn.active-summer { background-color: #1e293b; border-left-color: #f59e0b; color: #f59e0b; font-weight: bold; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .season-btn.active-winter { background-color: #1e293b; border-left-color: #38bdf8; color: #38bdf8; font-weight: bold; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .season-btn:hover:not(.active-summer):not(.active-winter) { background-color: #334155; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #3b82f6; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Underground Natural Gas Storage (UGS) Dynamics</h1>
+            <p class="text-slate-400 text-sm">Seasonal Injection/Withdrawal Cycle: Cushion Gas vs. Working Gas — Pressure/Volume (P/V) Behavior</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+            <div class="xl:col-span-4 flex flex-col gap-4">
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">1. Storage Type</h2>
+                    <div class="flex flex-col gap-2 mb-4">
+                        <button onclick="setMode('depleted')" id="btn-depleted" class="mode-btn active text-left px-3 py-3 rounded text-sm text-slate-300">🪨 Depleted Reservoir <span class="block text-[10px] font-normal text-slate-500">Silivri-type — porous rock</span></button>
+                        <button onclick="setMode('salt')" id="btn-salt" class="mode-btn text-left px-3 py-3 rounded text-sm text-slate-300">🧂 Salt Cavern <span class="block text-[10px] font-normal text-slate-500">Tuz Gölü-type — leached cavity</span></button>
+                    </div>
+
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">2. Season / Cycle Phase</h2>
+                    <div class="flex gap-2 mb-4">
+                        <button onclick="setSeason('summer')" id="btn-summer" class="season-btn active-summer flex-1 text-center px-3 py-3 rounded text-sm text-slate-300">☀️ SUMMER<span class="block text-[10px] font-normal text-slate-500">Injection</span></button>
+                        <button onclick="setSeason('winter')" id="btn-winter" class="season-btn flex-1 text-center px-3 py-3 rounded text-sm text-slate-300">❄️ WINTER<span class="block text-[10px] font-normal text-slate-500">Withdrawal</span></button>
+                    </div>
+
+                    <div class="slider-label text-sky-400"><span>Compressor / Wellhead Rate</span> <span id="val-q" class="font-mono">5</span></div>
+                    <input type="range" id="slider-q" min="1" max="10" step="1" value="5">
+
+                    <button onclick="startSim()" id="action-btn" class="w-full mt-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition transform active:scale-95 border border-emerald-400">
+                        ▶ START CYCLE
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner grid grid-cols-2 gap-3">
+                    <div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Reservoir Pressure</div>
+                        <div id="val-pressure" class="text-2xl font-bold text-sky-400">—</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Total Gas in Place</div>
+                        <div id="val-total" class="text-2xl font-bold text-emerald-400">0%</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Working Gas</div>
+                        <div id="val-working" class="text-lg font-bold text-emerald-300">0 MMSCM</div>
+                    </div>
+                    <div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Cushion Gas</div>
+                        <div id="val-cushion" class="text-lg font-bold text-amber-300">0 MMSCM</div>
+                    </div>
+                </div>
+
+                <div id="status-box" class="bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all">
+                    SYSTEM IDLE
+                </div>
+            </div>
+
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                <div class="grid grid-cols-2 gap-4 bg-slate-800 p-3 rounded-xl border border-slate-700">
+                    <div class="flex flex-col gap-1"><span class="text-[10px] font-bold text-slate-400 uppercase">Working Gas Fraction</span>
+                        <div class="w-full bg-slate-900 rounded-full h-4 border border-slate-600"><div id="bar-working" class="bg-emerald-500 h-full transition-all duration-300" style="width: 0%"></div></div>
+                    </div>
+                    <div class="flex flex-col gap-1"><span class="text-[10px] font-bold text-slate-400 uppercase">Cushion Gas Fraction (fixed)</span>
+                        <div class="w-full bg-slate-900 rounded-full h-4 border border-slate-600"><div id="bar-cushion" class="bg-amber-600 h-full transition-all duration-300" style="width: 0%"></div></div>
+                    </div>
+                </div>
+
+                <div class="flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden" style="flex: 1.3;">
+                    <div class="relative max-w-full">
+                        <canvas id="ugsCanvas" width="900" height="420" class="max-w-full h-auto rounded-lg"></canvas>
+
+                        <div id="well-inj" class="absolute flex flex-col items-center pointer-events-none" style="top:-56px;">
+                            <span id="well-season-label" class="text-[10px] font-bold text-amber-300 bg-slate-900 px-2 py-0.5 rounded border border-amber-500 whitespace-nowrap mb-0.5">INJECTION WELL</span>
+                            <span id="well-flow-label" class="text-[9px] font-bold text-amber-200 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-600 whitespace-nowrap mb-1">⛽ COMPRESSOR ON</span>
+                            <svg width="30" height="34" viewBox="0 0 30 34">
+                                <rect x="10" y="0" width="10" height="7" fill="#f59e0b" stroke="#d97706" stroke-width="1"/>
+                                <rect x="4" y="7" width="22" height="6" fill="#64748b" stroke="#334155" stroke-width="1"/>
+                                <rect x="13" y="13" width="4" height="11" fill="#94a3b8"/>
+                                <rect x="2" y="24" width="26" height="7" fill="#475569" stroke="#1e293b" stroke-width="1"/>
+                            </svg>
+                            <div id="well-arrow" class="mt-0.5 opacity-0 transition-opacity duration-300 text-amber-300 text-xs font-bold">⬇ INJECTING GAS</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">P/V Diagram — Pressure vs. Working Gas Volume</span>
+                        <span class="text-[10px] text-slate-500">API-style storage performance curve</span>
+                    </div>
+                    <canvas id="pvCanvas" width="900" height="180" class="w-full h-auto rounded-lg"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 text-[11px] text-slate-500 text-center leading-relaxed">
+            Cushion Gas: the permanent base volume (rock/brine pressure support) that is never withdrawn — keeps deliverability and prevents water/salt influx into the wellbore.<br>
+            Working Gas: the commercially injectable/withdrawable volume cycled seasonally to balance summer supply surplus against winter demand peaks.
+        </div>
+    </div>
+
+    <script>
+        // ================= CANVAS SETUP =================
+        const canvas = document.getElementById('ugsCanvas');
+        const ctx = canvas.getContext('2d');
+        const pvCanvas = document.getElementById('pvCanvas');
+        const pvCtx = pvCanvas.getContext('2d');
+
+        const sliderQ = document.getElementById('slider-q');
+        const actionBtn = document.getElementById('action-btn');
+        const statusBox = document.getElementById('status-box');
+
+        const RES_LEFT = 60;
+        const RES_RIGHT = canvas.width - 60;
+        const RES_TOP = 40;
+        const RES_BOT = canvas.height - 30;
+        const RES_W = RES_RIGHT - RES_LEFT;
+        const RES_H = RES_BOT - RES_TOP;
+
+        const WELL_X = canvas.width / 2;
+
+        // ================= STORAGE TYPE DATA =================
+        // cushionFrac: fraction of total capacity that is permanent cushion gas (never withdrawn)
+        // pMin/pMax: normalized pressure bounds (relative units, not absolute psi/bar, for teaching purposes)
+        // rockColor: how the storage medium is drawn
+        const storageData = {
+            'depleted': {
+                label: 'Depleted Reservoir (Silivri-type)',
+                cushionFrac: 0.55,          // porous reservoirs need large cushion (~50-60%) to maintain deliverability/pressure support
+                pMin: 0.35, pMax: 1.0,
+                rockColor: '#78350f',
+                rockLabel: 'Porous Sandstone Reservoir',
+                injRateMultiplier: 0.65,     // slower — matrix flow through pores is rate-limited
+                withRateMultiplier: 0.55,
+                totalCapacityMMSCM: 2400     // illustrative capacity, Silivri-scale order of magnitude
+            },
+            'salt': {
+                label: 'Salt Cavern (Tuz Gölü-type)',
+                cushionFrac: 0.25,          // salt caverns need much less cushion gas (~20-30%) — mechanically stable cavity
+                pMin: 0.30, pMax: 1.0,
+                rockColor: '#94a3b8',
+                rockLabel: 'Leached Salt Cavity',
+                injRateMultiplier: 1.4,      // fast cycling — hallmark advantage of salt caverns
+                withRateMultiplier: 1.5,
+                totalCapacityMMSCM: 280      // illustrative — salt caverns are smaller but fast-cycle
+            }
+        };
+
+        // ================= STATE =================
+        let mode = 'depleted';
+        let season = 'summer'; // 'summer' = injection, 'winter' = withdrawal
+        let isRunning = false;
+
+        // fillFraction: 0 = fully at cushion-only level, 1 = fully packed (max working gas in place)
+        let fillFraction = 0.15; // start partially filled, like a real facility mid-cycle
+        let pressureNorm = 0;    // derived each frame
+
+        // history for P/V trace
+        let pvHistory = [];
+
+        function currentData() { return storageData[mode]; }
+
+        function setMode(newMode) {
+            if (isRunning) return;
+            mode = newMode;
+            document.querySelectorAll('#btn-depleted, #btn-salt').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            resetSim();
+        }
+
+        function setSeason(newSeason) {
+            season = newSeason;
+            document.getElementById('btn-summer').classList.remove('active-summer');
+            document.getElementById('btn-winter').classList.remove('active-winter');
+            if (season === 'summer') {
+                document.getElementById('btn-summer').classList.add('active-summer');
+            } else {
+                document.getElementById('btn-winter').classList.add('active-winter');
+            }
+            updateWellLabels();
+            updateUI();
+        }
+
+        function updateWellLabels() {
+            const seasonLabel = document.getElementById('well-season-label');
+            const flowLabel = document.getElementById('well-flow-label');
+            const arrow = document.getElementById('well-arrow');
+            if (season === 'summer') {
+                seasonLabel.innerText = 'INJECTION WELL';
+                seasonLabel.className = "text-[10px] font-bold text-amber-300 bg-slate-900 px-2 py-0.5 rounded border border-amber-500 whitespace-nowrap mb-0.5";
+                flowLabel.innerText = '⛽ COMPRESSOR ON — PACKING GAS';
+                flowLabel.className = "text-[9px] font-bold text-amber-200 bg-amber-950 px-2 py-0.5 rounded-full border border-amber-600 whitespace-nowrap mb-1";
+                arrow.innerText = '⬇ INJECTING GAS';
+                arrow.className = arrow.className.replace('text-sky-300','text-amber-300').replace('text-amber-300','text-amber-300');
+                arrow.classList.remove('text-sky-300');
+                arrow.classList.add('text-amber-300');
+            } else {
+                seasonLabel.innerText = 'WITHDRAWAL WELL';
+                seasonLabel.className = "text-[10px] font-bold text-sky-300 bg-slate-900 px-2 py-0.5 rounded border border-sky-500 whitespace-nowrap mb-0.5";
+                flowLabel.innerText = '🔓 WELLHEAD VALVE OPEN';
+                flowLabel.className = "text-[9px] font-bold text-sky-200 bg-sky-950 px-2 py-0.5 rounded-full border border-sky-600 whitespace-nowrap mb-1";
+                arrow.innerText = '⬆ WITHDRAWING GAS';
+                arrow.classList.remove('text-amber-300');
+                arrow.classList.add('text-sky-300');
+            }
+        }
+
+        function resetSim() {
+            isRunning = false;
+            fillFraction = 0.15;
+            pvHistory = [];
+            actionBtn.innerText = "▶ START CYCLE";
+            statusBox.innerHTML = "SYSTEM IDLE";
+            statusBox.className = "bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all";
+            document.getElementById('well-arrow').classList.add('opacity-0');
+            document.getElementById('well-arrow').classList.remove('animate-pulse');
+            updateWellLabels();
+            updateUI();
+            drawScene();
+            drawPV();
+        }
+
+        function startSim() {
+            if (isRunning) { resetSim(); }
+            else {
+                isRunning = true;
+                actionBtn.innerText = "🔄 RESET";
+                document.getElementById('well-arrow').classList.remove('opacity-0');
+                document.getElementById('well-arrow').classList.add('animate-pulse');
+                animate();
+            }
+        }
+
+        // ================= PHYSICS =================
+        function updatePhysics() {
+            if (!isRunning) return;
+            const data = currentData();
+            let qRate = parseInt(sliderQ.value) * 0.0012;
+
+            if (season === 'summer') {
+                // Injection: fillFraction rises toward 1 (fully packed)
+                let rate = qRate * data.injRateMultiplier;
+                // Injectivity slows as the cavern/reservoir approaches max fill (rising backpressure)
+                rate *= (1 - fillFraction * 0.6);
+                fillFraction = Math.min(1, fillFraction + rate);
+
+                if (fillFraction >= 0.999) {
+                    statusBox.innerHTML = "✅ MAX PACKING REACHED <br><span class='text-xs font-normal'>Storage is fully packed. Compressors idle until demand season begins.</span>";
+                    statusBox.className = "bg-emerald-900/60 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm font-semibold transition-all";
+                    isRunning = false;
+                } else {
+                    statusBox.innerHTML = "☀️ SUMMER INJECTION <br><span class='text-xs font-normal'>Surplus pipeline gas compressed and packed into storage; pressure building.</span>";
+                    statusBox.className = "bg-amber-900/60 border border-amber-500 p-4 rounded-xl text-amber-200 text-sm font-semibold transition-all";
+                }
+            } else {
+                // Withdrawal: fillFraction falls toward the cushion-only floor (0)
+                // Working gas is whatever sits above the cushion; floor of fillFraction is 0 by definition
+                // (cushionFrac is handled separately as a fixed base, not part of fillFraction)
+                let rate = qRate * data.withRateMultiplier;
+                // Deliverability falls as working gas depletes (classic UGS deliverability curve)
+                rate *= (0.25 + fillFraction * 0.9);
+                fillFraction = Math.max(0, fillFraction - rate);
+
+                if (fillFraction <= 0.001) {
+                    statusBox.innerHTML = "🛑 WORKING GAS DEPLETED <br><span class='text-xs font-normal'>Only cushion gas remains. Deliverability lost — wells shut in until next injection season.</span>";
+                    statusBox.className = "bg-red-900/60 border border-red-500 p-4 rounded-xl text-red-200 text-sm font-semibold transition-all";
+                    isRunning = false;
+                } else {
+                    statusBox.innerHTML = "❄️ WINTER WITHDRAWAL <br><span class='text-xs font-normal'>Wellhead valves open; working gas delivered to grid to cover peak demand.</span>";
+                    statusBox.className = "bg-sky-900/60 border border-sky-500 p-4 rounded-xl text-sky-200 text-sm font-semibold transition-all";
+                }
+            }
+
+            // Pressure is a function of TOTAL gas in place (cushion + working), not working gas alone
+            const totalFrac = data.cushionFrac + fillFraction * (1 - data.cushionFrac);
+            pressureNorm = data.pMin + (data.pMax - data.pMin) * totalFrac;
+
+            pvHistory.push({ working: fillFraction, pressure: pressureNorm });
+            if (pvHistory.length > 400) pvHistory.shift();
+
+            updateUI();
+        }
+
+        // ================= UI =================
+        function updateUI() {
+            const data = currentData();
+            const totalFrac = data.cushionFrac + fillFraction * (1 - data.cushionFrac);
+            const workingMMSCM = fillFraction * (1 - data.cushionFrac) * data.totalCapacityMMSCM;
+            const cushionMMSCM = data.cushionFrac * data.totalCapacityMMSCM;
+
+            const pNorm = data.pMin + (data.pMax - data.pMin) * totalFrac;
+            document.getElementById('val-pressure').innerText = (pNorm * 100).toFixed(0) + "% Pmax";
+            document.getElementById('val-total').innerText = (totalFrac * 100).toFixed(0) + "%";
+            document.getElementById('val-working').innerText = workingMMSCM.toFixed(0) + " MMSCM";
+            document.getElementById('val-cushion').innerText = cushionMMSCM.toFixed(0) + " MMSCM";
+
+            document.getElementById('bar-working').style.width = (fillFraction * (1 - data.cushionFrac) * 100).toFixed(1) + "%";
+            document.getElementById('bar-cushion').style.width = (data.cushionFrac * 100).toFixed(1) + "%";
+        }
+
+        // ================= MAIN SCENE DRAWING =================
+        function drawScene() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const data = currentData();
+
+            // Sky band showing current season
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, RES_TOP);
+            if (season === 'summer') {
+                skyGrad.addColorStop(0, '#7c2d12');
+                skyGrad.addColorStop(1, '#0f172a');
+            } else {
+                skyGrad.addColorStop(0, '#0c4a6e');
+                skyGrad.addColorStop(1, '#0f172a');
+            }
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, RES_TOP);
+
+            // Sun / snowflake icon
+            ctx.font = '22px Segoe UI';
+            ctx.textAlign = 'left';
+            ctx.fillText(season === 'summer' ? '☀️' : '❄️', 15, 28);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = 'bold 12px Segoe UI';
+            ctx.fillText(season === 'summer' ? 'SUMMER — Injection Season' : 'WINTER — Withdrawal Season', 45, 26);
+
+            // Storage medium container outline
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(RES_LEFT, RES_TOP, RES_W, RES_H);
+
+            if (mode === 'depleted') {
+                drawDepletedReservoir(data);
+            } else {
+                drawSaltCavern(data);
+            }
+
+            // Wellbore pipe from surface to storage
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(WELL_X - 5, 0, 10, RES_TOP + 5);
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(WELL_X - 8, RES_TOP - 4, 16, 8);
+
+            // Flow direction indicator inside wellbore
+            if (isRunning) {
+                ctx.save();
+                ctx.fillStyle = season === 'summer' ? '#f59e0b' : '#38bdf8';
+                for (let i = 0; i < 3; i++) {
+                    const t = (Date.now() / 300 + i / 3) % 1;
+                    const y = season === 'summer' ? (5 + t * (RES_TOP - 5)) : (RES_TOP - t * (RES_TOP - 5));
+                    ctx.beginPath();
+                    const dir = season === 'summer' ? 1 : -1;
+                    ctx.moveTo(WELL_X, y + dir * 5);
+                    ctx.lineTo(WELL_X - 5, y - dir * 5);
+                    ctx.lineTo(WELL_X + 5, y - dir * 5);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // Legend
+            const legendY = RES_BOT + 18;
+            ctx.font = 'bold 11px Segoe UI';
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillText('■', RES_LEFT, legendY);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillText('Cushion Gas (permanent)', RES_LEFT + 14, legendY);
+
+            ctx.fillStyle = '#10b981';
+            ctx.fillText('■', RES_LEFT + 230, legendY);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillText('Working Gas (seasonal)', RES_LEFT + 244, legendY);
+
+            ctx.fillStyle = data.rockColor;
+            ctx.fillText('■', RES_LEFT + 460, legendY);
+            ctx.fillStyle = '#cbd5e1';
+            ctx.fillText(data.rockLabel, RES_LEFT + 474, legendY);
+        }
+
+        function drawDepletedReservoir(data) {
+            // Porous rock matrix background
+            ctx.fillStyle = data.rockColor;
+            ctx.fillRect(RES_LEFT, RES_TOP, RES_W, RES_H);
+
+            // Stippled pore texture
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            for (let i = 0; i < 220; i++) {
+                const px = RES_LEFT + Math.random() * RES_W;
+                const py = RES_TOP + Math.random() * RES_H;
+                ctx.beginPath();
+                ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Gas fills from bottom up, cushion gas as fixed bottom band, working gas above it
+            const cushionH = RES_H * data.cushionFrac;
+            const workingH = RES_H * (1 - data.cushionFrac) * fillFraction;
+
+            // Cushion gas band (bottom, fixed)
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.55)';
+            ctx.fillRect(RES_LEFT, RES_BOT - cushionH, RES_W, cushionH);
+
+            // Working gas band (rises/falls above cushion)
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.65)';
+            ctx.fillRect(RES_LEFT, RES_BOT - cushionH - workingH, RES_W, workingH);
+
+            // Interface line
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(RES_LEFT, RES_BOT - cushionH - workingH);
+            ctx.lineTo(RES_RIGHT, RES_BOT - cushionH - workingH);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#f59e0b';
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(RES_LEFT, RES_BOT - cushionH);
+            ctx.lineTo(RES_RIGHT, RES_BOT - cushionH);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawSaltCavern(data) {
+            // Salt formation background
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(RES_LEFT, RES_TOP, RES_W, RES_H);
+
+            // Bedded salt texture (horizontal striations)
+            ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+            ctx.lineWidth = 1;
+            for (let y = RES_TOP; y < RES_BOT; y += 10) {
+                ctx.beginPath();
+                ctx.moveTo(RES_LEFT, y);
+                ctx.lineTo(RES_RIGHT, y);
+                ctx.stroke();
+            }
+
+            // Carved cavity (teardrop-ish shape) centered under the well
+            const cavCx = WELL_X;
+            const cavTop = RES_TOP + RES_H * 0.12;
+            const cavBot = RES_BOT - RES_H * 0.08;
+            const cavW = RES_W * 0.42;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(cavCx, (cavTop + cavBot) / 2, cavW / 2, (cavBot - cavTop) / 2, 0, 0, Math.PI * 2);
+            ctx.clip();
+
+            // fill cavity background (empty/void look)
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(RES_LEFT, RES_TOP, RES_W, RES_H);
+
+            const cavH = cavBot - cavTop;
+            const cushionH = cavH * data.cushionFrac;
+            const workingH = cavH * (1 - data.cushionFrac) * fillFraction;
+
+            ctx.fillStyle = 'rgba(245, 158, 11, 0.6)';
+            ctx.fillRect(cavCx - cavW, cavBot - cushionH, cavW * 2, cushionH);
+
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
+            ctx.fillRect(cavCx - cavW, cavBot - cushionH - workingH, cavW * 2, workingH);
+
+            ctx.restore();
+
+            // Cavity outline
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(cavCx, (cavTop + cavBot) / 2, cavW / 2, (cavBot - cavTop) / 2, 0, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // interface line inside cavity
+            const cavH2 = cavBot - cavTop;
+            const cushionH2 = cavH2 * data.cushionFrac;
+            const workingH2 = cavH2 * (1 - data.cushionFrac) * fillFraction;
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(cavCx, (cavTop + cavBot) / 2, cavW / 2, (cavBot - cavTop) / 2, 0, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.strokeStyle = '#0ea5e9';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cavCx - cavW, cavBot - cushionH2 - workingH2);
+            ctx.lineTo(cavCx + cavW, cavBot - cushionH2 - workingH2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // ================= P/V CHART =================
+        function drawPV() {
+            pvCtx.fillStyle = '#0f172a';
+            pvCtx.fillRect(0, 0, pvCanvas.width, pvCanvas.height);
+
+            const padL = 55, padR = 20, padT = 15, padB = 30;
+            const plotW = pvCanvas.width - padL - padR;
+            const plotH = pvCanvas.height - padT - padB;
+
+            // axes
+            pvCtx.strokeStyle = '#475569';
+            pvCtx.lineWidth = 1;
+            pvCtx.beginPath();
+            pvCtx.moveTo(padL, padT);
+            pvCtx.lineTo(padL, padT + plotH);
+            pvCtx.lineTo(padL + plotW, padT + plotH);
+            pvCtx.stroke();
+
+            pvCtx.fillStyle = '#94a3b8';
+            pvCtx.font = '10px Segoe UI';
+            pvCtx.textAlign = 'center';
+            pvCtx.fillText('Working Gas Volume (fraction of max fill) →', padL + plotW / 2, pvCanvas.height - 6);
+
+            pvCtx.save();
+            pvCtx.translate(14, padT + plotH / 2);
+            pvCtx.rotate(-Math.PI / 2);
+            pvCtx.textAlign = 'center';
+            pvCtx.fillText('Reservoir Pressure (% Pmax) →', 0, 0);
+            pvCtx.restore();
+
+            // gridlines + tick labels
+            pvCtx.strokeStyle = 'rgba(71,85,105,0.4)';
+            pvCtx.font = '9px Segoe UI';
+            pvCtx.fillStyle = '#64748b';
+            for (let i = 0; i <= 4; i++) {
+                const gx = padL + (plotW * i) / 4;
+                pvCtx.beginPath();
+                pvCtx.moveTo(gx, padT);
+                pvCtx.lineTo(gx, padT + plotH);
+                pvCtx.stroke();
+                pvCtx.textAlign = 'center';
+                pvCtx.fillText((i * 25) + '%', gx, padT + plotH + 12);
+
+                const gy = padT + plotH - (plotH * i) / 4;
+                pvCtx.beginPath();
+                pvCtx.moveTo(padL, gy);
+                pvCtx.lineTo(padL + plotW, gy);
+                pvCtx.stroke();
+                pvCtx.textAlign = 'right';
+                pvCtx.fillText((i * 25) + '%', padL - 6, gy + 3);
+            }
+
+            // cushion gas boundary (vertical dashed line at working=0, pressure floor)
+            const data = currentData();
+            const pFloorNorm = (data.pMin + (data.pMax - data.pMin) * data.cushionFrac - data.pMin) / (data.pMax - data.pMin);
+            const pFloorY = padT + plotH - plotH * pFloorNorm;
+            pvCtx.strokeStyle = '#f59e0b';
+            pvCtx.setLineDash([4, 3]);
+            pvCtx.beginPath();
+            pvCtx.moveTo(padL, pFloorY);
+            pvCtx.lineTo(padL + plotW, pFloorY);
+            pvCtx.stroke();
+            pvCtx.setLineDash([]);
+            pvCtx.fillStyle = '#f59e0b';
+            pvCtx.textAlign = 'left';
+            pvCtx.fillText('cushion-only pressure floor', padL + 4, pFloorY - 4);
+
+            // trace
+            if (pvHistory.length > 1) {
+                pvCtx.strokeStyle = '#38bdf8';
+                pvCtx.lineWidth = 2;
+                pvCtx.beginPath();
+                pvHistory.forEach((pt, idx) => {
+                    const pNorm = (pt.pressure - data.pMin) / (data.pMax - data.pMin);
+                    const x = padL + pt.working * plotW;
+                    const y = padT + plotH - pNorm * plotH;
+                    if (idx === 0) pvCtx.moveTo(x, y); else pvCtx.lineTo(x, y);
+                });
+                pvCtx.stroke();
+
+                // current point marker
+                const last = pvHistory[pvHistory.length - 1];
+                const pNormLast = (last.pressure - data.pMin) / (data.pMax - data.pMin);
+                const lx = padL + last.working * plotW;
+                const ly = padT + plotH - pNormLast * plotH;
+                pvCtx.fillStyle = season === 'summer' ? '#f59e0b' : '#38bdf8';
+                pvCtx.beginPath();
+                pvCtx.arc(lx, ly, 4, 0, Math.PI * 2);
+                pvCtx.fill();
+            }
+        }
+
+        // ================= ANIMATION LOOP =================
+        function animate() {
+            if (isRunning) {
+                updatePhysics();
+                drawScene();
+                drawPV();
+                requestAnimationFrame(animate);
+            } else {
+                drawScene();
+                drawPV();
+            }
+        }
+
+        function positionWells() {
+            const scale = canvas.clientWidth / canvas.width;
+            const injEl = document.getElementById('well-inj');
+            injEl.style.left = (WELL_X * scale) + 'px';
+            injEl.style.transform = 'translateX(-50%)';
+        }
+        window.addEventListener('resize', positionWells);
+        window.addEventListener('load', positionWells);
+        setTimeout(positionWells, 50);
+
+        updateWellLabels();
+        updateUI();
+        drawScene();
+        drawPV();
+    </script>
+</body>
+</html>

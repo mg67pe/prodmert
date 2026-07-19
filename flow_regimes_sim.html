@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tubing Flow Regimes & Liquid Loading</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+    <div class="max-w-5xl w-full">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Vertical Tubing: Flow Regimes & Liquid Loading</h1>
+            <p class="text-slate-400 text-sm">Golan & Whitson - Well Performance (Multiphase Flow & Turner's Criterion)</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="lg:col-span-1 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg">
+                <h2 class="text-lg font-semibold text-white mb-4 border-b border-slate-600 pb-2">Production Parameters</h2>
+                
+                <div class="slider-label"><span>Gas Rate (Q_gas) - Lift Force</span> <span id="val-qgas" class="font-mono text-sky-300">High</span></div>
+                <input type="range" id="slider-qgas" min="1" max="100" step="1" value="80">
+                
+                <div class="slider-label"><span>Liquid Rate (Q_liquid) - Load</span> <span id="val-qliq" class="font-mono text-blue-300">Low</span></div>
+                <input type="range" id="slider-qliq" min="1" max="50" step="1" value="10" style="accent-color: #3b82f6;">
+
+                <div class="mt-6 p-4 rounded-lg bg-slate-900 border border-slate-700 text-center">
+                    <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Current Flow Regime</div>
+                    <div id="regime-name" class="text-2xl font-bold text-emerald-400 mt-2">Annular Mist</div>
+                    <p id="regime-desc" class="text-sm text-slate-400 mt-2">High gas velocity. Liquid forms a film on the tubing walls, while a high-speed gas core carries mist. Ideal for gas wells.</p>
+                </div>
+
+                <div id="loading-warning" class="hidden mt-4 bg-red-900/50 border border-red-500 text-red-200 p-3 rounded text-sm font-semibold text-center">
+                    🚨 LIQUID LOADING STARTED! <br>
+                    <span class="text-xs font-normal">Gas velocity dropped below the Critical Turner Velocity. Liquid slips down and accumulates at the bottom hole. The well may die! Consider installing a velocity string.</span>
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden">
+                <div class="text-center absolute left-4 top-4 text-slate-500 text-xs rotate-90 origin-left">SURFACE (Wellhead) &rarr;</div>
+                <canvas id="flowCanvas" width="200" height="500"></canvas>
+                <div class="text-center absolute left-4 bottom-4 text-slate-500 text-xs rotate-90 origin-left">BOTTOM HOLE (Pwf)</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('flowCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderQgas = document.getElementById('slider-qgas');
+        const sliderQliq = document.getElementById('slider-qliq');
+
+        let Qgas = 80; let Qliq = 10; let regime = 'annular';
+        let gasBubbles = []; let liquidSlugs = [];
+
+        class Bubble {
+            constructor(isSmall) { this.reset(isSmall); this.y = Math.random() * canvas.height; }
+            reset(isSmall) {
+                this.y = canvas.height + Math.random() * 50;
+                this.r = isSmall ? 2 + Math.random() * 4 : 10 + Math.random() * 20;
+                if (regime === 'annular') this.x = (canvas.width / 2) + (Math.random() - 0.5) * 60;
+                else this.x = 20 + Math.random() * (canvas.width - 40);
+                this.isSmall = isSmall;
+            }
+            update() {
+                let speed = (Qgas / 10);
+                if (regime === 'loading') speed = 0.5; 
+                this.y -= speed + (this.isSmall ? Math.random() * 2 : Math.random());
+                this.x += (Math.random() - 0.5) * 2;
+                if (this.y + this.r < 0) this.reset(this.isSmall);
+            }
+            draw() {
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'; ctx.fill();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'; ctx.lineWidth = 1; ctx.stroke();
+            }
+        }
+
+        class LiquidDrop {
+            constructor() { this.y = Math.random() * canvas.height; this.x = 20 + Math.random() * (canvas.width - 40); this.r = 3 + Math.random() * 5; }
+            update() {
+                if (regime === 'loading') {
+                    this.y += 3 + Math.random() * 2;
+                    if (this.y > canvas.height) this.y = -10;
+                } else if (regime === 'annular') {
+                    this.y -= (Qgas / 30);
+                    if (this.x < canvas.width / 2) this.x -= 1; else this.x += 1; 
+                    if (this.x < 10) this.x = 10; if (this.x > canvas.width - 10) this.x = canvas.width - 10;
+                    if (this.y < 0) { this.y = canvas.height; this.x = 20 + Math.random() * (canvas.width - 40); }
+                } else {
+                    this.y -= (Qgas / 15) - 1; 
+                    if (this.y < 0) this.y = canvas.height;
+                }
+            }
+            draw() {
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.8)'; ctx.fill();
+            }
+        }
+
+        for (let i=0; i<50; i++) gasBubbles.push(new Bubble(true));
+        for (let i=0; i<10; i++) gasBubbles.push(new Bubble(false));
+        for (let i=0; i<40; i++) liquidSlugs.push(new LiquidDrop());
+
+        function determineRegime() {
+            Qgas = parseInt(sliderQgas.value); Qliq = parseInt(sliderQliq.value);
+            let v_sg = Qgas; let v_sl = Qliq;
+            let nameEl = document.getElementById('regime-name'); let descEl = document.getElementById('regime-desc'); let warning = document.getElementById('loading-warning');
+
+            if (v_sg < 15 && v_sl > 0) {
+                regime = 'loading'; nameEl.innerText = "Liquid Loading"; nameEl.className = "text-2xl font-bold text-red-500 mt-2";
+                descEl.innerText = "Gas velocity is too low to carry liquids upward. Water slips back and accumulates, killing the well."; warning.classList.remove('hidden');
+            } else if (v_sg > 60) {
+                regime = 'annular'; nameEl.innerText = "Annular Mist"; nameEl.className = "text-2xl font-bold text-emerald-400 mt-2";
+                descEl.innerText = "High gas velocity. Liquid forms a film on the tubing walls, while a high-speed gas core carries mist. Ideal for gas wells."; warning.classList.add('hidden');
+            } else if (v_sg > 15 && v_sl > 20) {
+                regime = 'slug'; nameEl.innerText = "Slug Flow"; nameEl.className = "text-2xl font-bold text-amber-400 mt-2";
+                descEl.innerText = "Large Taylor bubbles separated by heavy liquid slugs. Causes severe pressure fluctuations."; warning.classList.add('hidden');
+            } else {
+                regime = 'bubble'; nameEl.innerText = "Bubble Flow"; nameEl.className = "text-2xl font-bold text-sky-400 mt-2";
+                descEl.innerText = "Dispersed gas bubbles flowing smoothly within a continuous liquid phase."; warning.classList.add('hidden');
+            }
+        }
+
+        function drawBackground() {
+            ctx.fillStyle = '#334155'; ctx.fillRect(0, 0, 10, canvas.height); ctx.fillRect(canvas.width - 10, 0, 10, canvas.height); 
+            if (regime === 'annular') {
+                let grad = ctx.createLinearGradient(0, 0, canvas.width, 0); grad.addColorStop(0, '#1e3a8a'); grad.addColorStop(0.2, '#0f172a'); grad.addColorStop(0.8, '#0f172a'); grad.addColorStop(1, '#1e3a8a'); ctx.fillStyle = grad;
+            } else if (regime === 'loading') {
+                let grad = ctx.createLinearGradient(0, 0, 0, canvas.height); grad.addColorStop(0, '#0f172a'); grad.addColorStop(0.6, '#1e3a8a'); grad.addColorStop(1, '#2563eb'); ctx.fillStyle = grad;
+            } else { ctx.fillStyle = '#1e3a8a'; }
+            ctx.fillRect(10, 0, canvas.width - 20, canvas.height);
+
+            if (regime === 'slug') {
+                let time = Date.now() / 1000; let yOffset = (time * (Qgas/2)) % canvas.height;
+                ctx.fillStyle = '#2563eb'; ctx.fillRect(10, canvas.height - yOffset, canvas.width - 20, 100); ctx.fillRect(10, canvas.height - yOffset - 300, canvas.width - 20, 100);
+            }
+        }
+
+        function animate() {
+            determineRegime(); drawBackground();
+            gasBubbles.forEach(b => { if(b.isSmall) { b.update(); b.draw(); } });
+            if (regime === 'slug' || regime === 'churn') { gasBubbles.forEach(b => { if(!b.isSmall) { b.update(); b.draw(); } }); }
+            liquidSlugs.forEach(l => { l.update(); l.draw(); });
+            requestAnimationFrame(animate);
+        }
+
+        sliderQgas.addEventListener('input', determineRegime); sliderQliq.addEventListener('input', determineRegime);
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP (Electric Submersible Pump) Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 15px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; }
+        input[type=range] { accent-color: #10b981; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-emerald-400 mb-2">ESP (Electric Submersible Pump) Mechanics</h1>
+            <p class="text-slate-400 text-sm">VFD Frequency Control, H-Q (Head-Flow) Curves, and Affinity Laws</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            
+            <div class="lg:col-span-1 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-lg flex flex-col gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-2 border-b border-slate-600 pb-1">VFD Control</h2>
+                    <p class="text-xs text-slate-300 mb-4">
+                        Increasing ESP frequency (Hz) shifts the pump curve upwards (Affinity Laws). The intersection with the system curve dictates the new production rate (Q).
+                    </p>
+                </div>
+
+                <div>
+                    <div class="slider-label"><span>Motor Frequency (Hz)</span> <span id="val-hz" class="font-mono text-emerald-300">50 Hz</span></div>
+                    <input type="range" id="slider-hz" min="35" max="70" step="1" value="50">
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div class="bg-slate-900 border border-slate-600 p-2 rounded text-center">
+                        <div class="text-[10px] text-slate-400">Production Rate (Q)</div>
+                        <div id="val-q" class="text-lg font-bold text-blue-400">1000 bpd</div>
+                    </div>
+                    <div class="bg-slate-900 border border-slate-600 p-2 rounded text-center">
+                        <div class="text-[10px] text-slate-400">Pump Head</div>
+                        <div id="val-head" class="text-lg font-bold text-emerald-400">5000 ft</div>
+                    </div>
+                </div>
+
+                <div id="status-box" class="mt-4 bg-emerald-900/50 border border-emerald-500 p-3 rounded text-sm text-emerald-200 font-semibold text-center transition-colors">
+                    OPTIMUM OPERATION <br><span class="text-xs font-normal">Perfect balance between pump and well system.</span>
+                </div>
+            </div>
+
+            <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-2 relative flex flex-col items-center">
+                    <h3 class="text-slate-400 text-sm font-bold mb-2 uppercase tracking-widest">Downhole Anatomy (ESP)</h3>
+                    <canvas id="espCanvas" width="200" height="450" class="w-full max-w-[200px] h-auto"></canvas>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-2 relative flex flex-col items-center">
+                    <h3 class="text-slate-400 text-sm font-bold mb-2 uppercase tracking-widest">Pump Performance (H-Q) Curve</h3>
+                    <canvas id="graphCanvas" width="400" height="450" class="w-full h-auto bg-slate-800 rounded"></canvas>
+                    <div class="absolute bottom-4 right-4 text-[10px] bg-slate-900/80 p-2 rounded border border-slate-600">
+                        <div class="flex items-center gap-1"><span class="w-3 h-[2px] bg-emerald-500"></span> Pump Curve (Motor)</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-[2px] bg-red-500"></span> System Curve (Well)</div>
+                        <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-white"></span> Operating Point</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const espCanvas = document.getElementById('espCanvas');
+        const espCtx = espCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const graphCtx = graphCanvas.getContext('2d');
+        const sliderHz = document.getElementById('slider-hz');
+
+        let hz = 50;
+        let rotationAngle = 0;
+        let flowParticles = [];
+        let operatingPoint = { q: 1000, h: 5000 };
+
+        class FluidDrop {
+            constructor() {
+                this.reset();
+                this.y = Math.random() * 450; 
+            }
+            reset() {
+                this.x = (espCanvas.width/2) + (Math.random()-0.5)*30;
+                this.y = 350; 
+                this.active = true;
+            }
+            update(speed) {
+                this.y -= speed;
+                if (this.y < 320 && this.y > 100) {
+                    this.x += Math.sin(this.y * 0.15 + rotationAngle) * 3; 
+                }
+                let cx = espCanvas.width/2;
+                if (this.x < cx - 18) this.x = cx - 18;
+                if (this.x > cx + 18) this.x = cx + 18;
+                if (this.y < 0) this.reset();
+            }
+            draw() {
+                espCtx.beginPath(); espCtx.arc(this.x, this.y, 2, 0, Math.PI*2); espCtx.fillStyle = '#38bdf8'; espCtx.fill();
+            }
+        }
+
+        for(let i=0; i<150; i++) flowParticles.push(new FluidDrop());
+
+        function updatePhysics() {
+            hz = parseFloat(sliderHz.value);
+            document.getElementById('val-hz').innerText = hz + " Hz";
+
+            const staticLift = 3000;
+            const frictionC = 0.002;
+            const calcSystemHead = (q) => staticLift + (frictionC * Math.pow(q, 2));
+
+            const baseMaxHead = 6000;
+            const basePumpC = 0.001;
+            let speedRatio = hz / 50.0;
+            
+            let currentPumpCurve = [];
+            let currentSystemCurve = [];
+            let foundIntersection = null;
+
+            for (let q = 0; q <= 2000; q += 20) {
+                let qBase = q / speedRatio;
+                let hBase = baseMaxHead - (basePumpC * Math.pow(qBase, 2));
+                let hPump = hBase * Math.pow(speedRatio, 2);
+                let hSys = calcSystemHead(q);
+
+                currentPumpCurve.push({q: q, h: hPump});
+                currentSystemCurve.push({q: q, h: hSys});
+
+                if (!foundIntersection && hPump <= hSys) {
+                    foundIntersection = { q: q, h: hSys };
+                }
+            }
+
+            if (foundIntersection) {
+                operatingPoint = foundIntersection;
+                document.getElementById('val-q').innerText = operatingPoint.q.toFixed(0) + " bpd";
+                document.getElementById('val-head').innerText = operatingPoint.h.toFixed(0) + " ft";
+                
+                let status = document.getElementById('status-box');
+                if (hz < 40) {
+                    status.className = "mt-4 bg-amber-900/50 border border-amber-500 p-3 rounded text-sm text-amber-200 font-semibold text-center";
+                    status.innerHTML = `LOW FREQUENCY <br><span class="text-xs font-normal">Pressure is barely enough to lift the fluid to surface.</span>`;
+                } else if (hz > 65) {
+                    status.className = "mt-4 bg-red-900/50 border border-red-500 p-3 rounded text-sm text-red-200 font-semibold text-center";
+                    status.innerHTML = `UPTHRUST RISK <br><span class="text-xs font-normal">Excessive flow rate. Motor overheating and wear risk!</span>`;
+                } else {
+                    status.className = "mt-4 bg-emerald-900/50 border border-emerald-500 p-3 rounded text-sm text-emerald-200 font-semibold text-center";
+                    status.innerHTML = `OPTIMUM OPERATION <br><span class="text-xs font-normal">Perfect balance between pump and well system.</span>`;
+                }
+            }
+
+            return { curves: { pump: currentPumpCurve, sys: currentSystemCurve }, op: foundIntersection };
+        }
+
+        function drawESP() {
+            espCtx.clearRect(0,0,espCanvas.width, espCanvas.height);
+            let cx = espCanvas.width/2;
+
+            espCtx.fillStyle = '#475569'; espCtx.fillRect(cx - 35, 0, 70, 450);
+            espCtx.fillStyle = '#0f172a'; espCtx.fillRect(cx - 25, 0, 50, 450);
+            espCtx.fillStyle = '#f59e0b'; espCtx.fillRect(cx + 12, 0, 6, 450);
+            espCtx.fillStyle = '#64748b'; espCtx.fillRect(cx - 18, 380, 36, 70);
+            espCtx.fillStyle = '#fff'; espCtx.font="10px Arial"; espCtx.fillText("MOTOR", cx - 18, 420);
+            espCtx.fillStyle = '#94a3b8'; espCtx.fillRect(cx - 18, 360, 36, 20);
+            espCtx.fillStyle = '#1e293b'; espCtx.fillRect(cx - 18, 340, 36, 20);
+            espCtx.fillStyle = '#38bdf8'; 
+            espCtx.beginPath(); espCtx.moveTo(cx-25, 350); espCtx.lineTo(cx-15, 350); espCtx.lineTo(cx-20, 345); espCtx.fill();
+            espCtx.beginPath(); espCtx.moveTo(cx+25, 350); espCtx.lineTo(cx+15, 350); espCtx.lineTo(cx+20, 345); espCtx.fill();
+
+            for(let y=320; y>100; y-=30) {
+                espCtx.fillStyle = '#64748b'; espCtx.fillRect(cx - 20, y, 40, 25);
+                espCtx.save(); espCtx.translate(cx, y+12); espCtx.rotate(rotationAngle); espCtx.fillStyle = '#cbd5e1'; espCtx.fillRect(-12, -2, 24, 4); espCtx.fillRect(-2, -12, 4, 24); espCtx.restore();
+            }
+            espCtx.fillStyle = '#cbd5e1'; espCtx.fillRect(cx - 15, 0, 30, 100);
+        }
+
+        function drawGraph(physicsData) {
+            graphCtx.clearRect(0,0,graphCanvas.width, graphCanvas.height);
+            const getX = (q) => 50 + (q / 2000) * 330;
+            const getY = (h) => 400 - (h / 10000) * 380;
+
+            graphCtx.strokeStyle = '#334155'; graphCtx.lineWidth=1;
+            for(let q=0; q<=2000; q+=500) {
+                graphCtx.beginPath(); graphCtx.moveTo(getX(q), 20); graphCtx.lineTo(getX(q), 400); graphCtx.stroke();
+                graphCtx.fillStyle = '#94a3b8'; graphCtx.font="10px Arial"; graphCtx.fillText(q, getX(q)-10, 415);
+            }
+            for(let h=0; h<=10000; h+=2000) {
+                graphCtx.beginPath(); graphCtx.moveTo(50, getY(h)); graphCtx.lineTo(380, getY(h)); graphCtx.stroke();
+                graphCtx.fillStyle = '#94a3b8'; graphCtx.fillText(h, 15, getY(h)+4);
+            }
+            graphCtx.fillText("Flow Rate (Q) bpd \u2192", 150, 435);
+            graphCtx.save(); graphCtx.translate(12, 250); graphCtx.rotate(-Math.PI/2); graphCtx.fillText("Head (ft) \u2192", 0, 0); graphCtx.restore();
+
+            graphCtx.strokeStyle = '#ef4444'; graphCtx.lineWidth = 3;
+            graphCtx.beginPath();
+            physicsData.curves.sys.forEach((pt, i) => { if(i===0) graphCtx.moveTo(getX(pt.q), getY(pt.h)); else graphCtx.lineTo(getX(pt.q), getY(pt.h)); });
+            graphCtx.stroke();
+
+            graphCtx.strokeStyle = '#10b981'; graphCtx.lineWidth = 3;
+            graphCtx.beginPath();
+            physicsData.curves.pump.forEach((pt, i) => { if(i===0) graphCtx.moveTo(getX(pt.q), getY(pt.h)); else graphCtx.lineTo(getX(pt.q), getY(pt.h)); });
+            graphCtx.stroke();
+
+            if (physicsData.op) {
+                let opX = getX(physicsData.op.q); let opY = getY(physicsData.op.h);
+                graphCtx.strokeStyle = 'rgba(255,255,255,0.4)'; graphCtx.setLineDash([4,4]); graphCtx.lineWidth = 1;
+                graphCtx.beginPath(); graphCtx.moveTo(50, opY); graphCtx.lineTo(opX, opY); graphCtx.lineTo(opX, 400); graphCtx.stroke(); graphCtx.setLineDash([]);
+                graphCtx.fillStyle = '#fff'; graphCtx.beginPath(); graphCtx.arc(opX, opY, 6, 0, Math.PI*2); graphCtx.fill();
+            }
+        }
+
+        function animate() {
+            let physics = updatePhysics();
+            rotationAngle += (hz / 30); 
+            let flowSpeed = physics.op ? physics.op.q / 300 : 0; 
+            drawESP(); drawGraph(physics);
+            flowParticles.forEach(p => { p.update(flowSpeed); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+
+        sliderHz.addEventListener('input', updatePhysics);
+        animate();
+    </script>
+</body>
+</html>
