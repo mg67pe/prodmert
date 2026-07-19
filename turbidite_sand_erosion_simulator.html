@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea Choke Erosion & API RP 14E</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        .btn-replace { transition: all 0.2s ease; background: linear-gradient(135deg, #059669, #10b981); }
+        .btn-replace:active:not(:disabled) { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-amber-500 mb-2">Well Integrity: Turbidite Sand & Choke Erosion</h1>
+            <p class="text-slate-400 text-sm">API RP 14E Erosional Velocity Limits, Tungsten Carbide Degradation, and Subsea Intervention</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2">Production Parameters</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-sky-400"><span>Gas Flow Rate (Q)</span> <span id="val-q" class="font-mono">80 MMscfd</span></div>
+                        <input type="range" id="slider-q" min="20" max="250" step="10" value="80">
+                        <div class="text-[10px] text-slate-400 -mt-2 mb-2">Drives the fluid velocity ($V_m$) through the choke.</div>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-amber-400"><span>Sand Concentration</span> <span id="val-sand" class="font-mono">5 lb/MMscf</span></div>
+                        <input type="range" id="slider-sand" min="0" max="50" step="1" value="5" style="accent-color: #f59e0b;">
+                        <div class="text-[10px] text-slate-400 -mt-2 mb-2">Unconsolidated turbidite sand from the reservoir matrix. Drops the Empirical $C$-Factor.</div>
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="slider-label text-slate-300"><span>Choke Opening Size</span> <span id="val-choke" class="font-mono">48/64 in</span></div>
+                        <input type="range" id="slider-choke" min="16" max="96" step="4" value="48" style="accent-color: #94a3b8;">
+                    </div>
+
+                    <button onclick="replaceChoke()" id="btn-replace" class="btn-replace w-full mt-2 py-3 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)] border border-emerald-400 flex items-center justify-center gap-2">
+                        <span>🔧 ROV INTERVENTION: REPLACE CHOKE</span>
+                    </button>
+                    <div class="text-[10px] text-slate-400 mt-2 text-center">Cost: ~$5,000,000 + 3 Days Deferred Production</div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex-1 flex flex-col gap-3">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">API RP 14E Analysis</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Actual Mixture Velocity">Actual Velocity ($V_m$)</div>
+                            <div id="val-vm" class="text-xl font-bold text-white">0 ft/s</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="API Erosional Velocity Limit">API Limit ($V_e$)</div>
+                            <div id="val-ve" class="text-xl font-bold text-emerald-400">0 ft/s</div>
+                        </div>
+                        
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center col-span-2">
+                            <div class="flex justify-between text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                                <span>Choke Plug Health</span>
+                                <span id="val-health" class="text-emerald-400">100%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 rounded-full h-4 mt-1 border border-slate-700 overflow-hidden relative">
+                                <div id="bar-health" class="bg-emerald-500 h-full transition-all duration-200" style="width: 100%"></div>
+                            </div>
+                            <div id="val-life" class="text-xs font-bold text-slate-300 mt-1">Est. Life: 5.2 Years</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="mt-auto bg-emerald-900/40 border border-emerald-500 p-3 rounded-xl text-emerald-200 text-xs font-semibold leading-relaxed transition-all">
+                        <strong>SAFE OPERATION:</strong> Velocity is below the API RP 14E limit. Sand erosion is minimal. Choke integrity is maintained.
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="xl:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[650px]">
+                <canvas id="erosionCanvas" width="900" height="630" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 right-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Subsea Choke Legend</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-slate-600 rounded-sm"></span> Tungsten Carbide Trim / Body</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-sky-400"></span> High Velocity Gas</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#a16207]"></span> Turbidite Sand Particles</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500"></span> Erosional Impacts / Sparks</div>
+                </div>
+                
+                <div class="absolute bottom-4 left-4 bg-slate-900/80 p-2 rounded border border-slate-700 text-[10px] text-slate-400 font-mono pointer-events-none">
+                    $V_e = \frac{C}{\sqrt{\rho_m}}$ <br>
+                    Continuous Sand Service: $C \approx 50$
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('erosionCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slQ = document.getElementById('slider-q');
+        const slSand = document.getElementById('slider-sand');
+        const slChoke = document.getElementById('slider-choke');
+
+        // Physics Constants & State
+        let Q_gas = 80;
+        let sandConc = 5;
+        let chokeSize = 48; // in 64ths
+        
+        let Vm = 0; // Actual Velocity ft/s
+        let Ve = 0; // API Limit Velocity ft/s
+        
+        let chokeHealth = 100.0; // 0 to 100
+        let isDestroyed = false;
+        
+        let particles = [];
+        let sparks = [];
+        let animationId;
+
+        // Visual Geometry Constants (Angle Choke)
+        const C_X = canvas.width / 2;
+        const C_Y = canvas.height / 2;
+        const PIPE_D = 120; // Pipe diameter
+
+        class FluidParticle {
+            constructor(isSand) {
+                this.isSand = isSand;
+                this.reset();
+                this.x = Math.random() * (C_X - 100); // Pre-fill left side
+            }
+            reset() {
+                this.isSand = Math.random() < (sandConc / 100);
+                this.x = -10;
+                // Distribute vertically in inlet pipe
+                this.y = C_Y - PIPE_D/2 + 10 + Math.random() * (PIPE_D - 20);
+                this.active = true;
+                this.state = 'inlet'; // inlet, throat, outlet
+                
+                // Add slight vertical variation
+                this.vy = (Math.random() - 0.5);
+            }
+            update() {
+                if (!this.active) return;
+                
+                let baseSpeed = Math.max(2, Vm / 15);
+                if (isDestroyed) baseSpeed *= 1.5; // Flows uncontrolled if destroyed
+
+                if (this.state === 'inlet') {
+                    this.x += baseSpeed;
+                    this.y += this.vy;
+                    
+                    // Converge towards the choke opening (Vena Contracta)
+                    let chokeOpeningRadius = isDestroyed ? PIPE_D/2 : (chokeSize / 64) * (PIPE_D / 2);
+                    
+                    if (this.x > C_X - 100 && this.x < C_X) {
+                        let targetY = C_Y + (Math.random() - 0.5) * chokeOpeningRadius;
+                        this.y += (targetY - this.y) * 0.1;
+                    }
+                    
+                    // Hit the choke plug / turn down
+                    if (this.x >= C_X - 20) {
+                        if (this.isSand && !isDestroyed && this.x >= C_X - 10) {
+                            // Sand impact!
+                            if (Vm > Ve * 0.9) { // Causes damage if near/over limit
+                                createSpark(this.x, this.y);
+                                damageChoke();
+                            }
+                        }
+                        this.state = 'throat';
+                    }
+                } 
+                else if (this.state === 'throat') {
+                    // Turn 90 degrees downwards
+                    this.x += baseSpeed * 0.5; // Slight forward momentum
+                    this.y += baseSpeed * 2.5; // Fast downward
+                    
+                    if (this.y > C_Y + 50) this.state = 'outlet';
+                }
+                else if (this.state === 'outlet') {
+                    this.y += baseSpeed * 1.5;
+                    this.x += (Math.random() - 0.5) * 2; // Turbulence
+                    
+                    if (this.y > canvas.height + 20) this.reset();
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                if (this.isSand) {
+                    ctx.rect(this.x - 2, this.y - 2, 4, 4);
+                    ctx.fillStyle = '#a16207'; // Brown sand
+                } else {
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = '#38bdf8'; // Sky blue gas
+                    ctx.shadowBlur = 4; ctx.shadowColor = '#38bdf8';
+                }
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Spark {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.vx = -(1 + Math.random() * 3); // Bounce back left
+                this.vy = (Math.random() - 0.5) * 4;
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life -= 0.1;
+            }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.fillStyle = `rgba(239, 68, 68, ${this.life})`; // Red spark
+                ctx.fillRect(this.x, this.y, 3, 3);
+            }
+        }
+
+        function createSpark(x, y) {
+            sparks.push(new Spark(x, y));
+            if (sparks.length > 50) sparks.shift();
+        }
+
+        function damageChoke() {
+            if (isDestroyed) return;
+            // Erosion rate scales with Velocity squared and Sand concentration
+            let erosionFactor = Math.pow(Vm / Math.max(Ve, 1), 2) * (sandConc / 10);
+            chokeHealth -= erosionFactor * 0.05;
+            
+            if (chokeHealth <= 0) {
+                chokeHealth = 0;
+                isDestroyed = true;
+            }
+        }
+
+        function replaceChoke() {
+            chokeHealth = 100.0;
+            isDestroyed = false;
+            updatePhysics(); // Update UI immediately
+        }
+
+        // Initialize particles
+        for(let i=0; i<300; i++) particles.push(new FluidParticle());
+
+        function updatePhysics() {
+            Q_gas = parseInt(slQ.value);
+            sandConc = parseInt(slSand.value);
+            chokeSize = parseInt(slChoke.value);
+
+            document.getElementById('val-q').innerText = Q_gas + " MMscfd";
+            document.getElementById('val-sand').innerText = sandConc + " lb/MMscf";
+            document.getElementById('val-choke').innerText = chokeSize + "/64 in";
+
+            // Simplify API RP 14E logic for visualization
+            // Vm = Q / A. (Assuming constant pressure/density for simplicity in visualizer)
+            let Area = Math.pow(chokeSize / 64, 2); 
+            Vm = (Q_gas / Area) * 1.5; // Scaled for visual representation (ft/s)
+            
+            // C-Factor depends on sand. Clean gas C=100. Sand C=50 or less.
+            let C_factor = 100 - (sandConc * 1.5);
+            if (C_factor < 30) C_factor = 30; // Minimum limit
+            
+            let rho_m = 5.0; // Gas density lbs/ft3
+            Ve = C_factor / Math.sqrt(rho_m);
+
+            // Update Dashboards
+            document.getElementById('val-vm').innerText = Math.floor(Vm) + " ft/s";
+            document.getElementById('val-ve').innerText = Math.floor(Ve) + " ft/s";
+
+            // Visual Health Bar
+            document.getElementById('val-health').innerText = chokeHealth.toFixed(1) + "%";
+            let hBar = document.getElementById('bar-health');
+            hBar.style.width = chokeHealth + "%";
+
+            // Life estimation
+            let wearRatio = (Vm / Ve);
+            let lifeYrs = 10;
+            if (wearRatio > 1.0) {
+                lifeYrs = 10 / Math.pow(wearRatio, 3); // Exponential decay
+            }
+            if (sandConc === 0) lifeYrs = 20; // Clean gas lasts forever
+            
+            document.getElementById('val-life').innerText = isDestroyed ? "DESTROYED" : `Est. Life: ${lifeYrs.toFixed(1)} Years`;
+
+            // Status Box Updates
+            let statBox = document.getElementById('status-box');
+            if (isDestroyed) {
+                statBox.className = "mt-auto bg-red-900/50 border border-red-500 p-3 rounded-xl text-red-200 text-xs font-semibold leading-relaxed transition-all shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+                statBox.innerHTML = "<strong>🚨 CHOKE DESTROYED (BLOWOUT RISK):</strong> The tungsten carbide trim has completely eroded away. The well is flowing uncontrolled. Immediate ROV intervention required!";
+                hBar.className = "bg-slate-700 h-full";
+                document.getElementById('val-vm').className = "text-xl font-bold text-red-500";
+            } else if (Vm > Ve) {
+                statBox.className = "mt-auto bg-amber-900/50 border border-amber-500 p-3 rounded-xl text-amber-200 text-xs font-semibold leading-relaxed transition-all";
+                statBox.innerHTML = "<strong>⚠️ EROSION ALARM:</strong> Actual Velocity exceeds API RP 14E Limit. Sand is aggressively eroding the choke trim. Reduce flow rate or face imminent failure.";
+                hBar.className = "bg-amber-500 h-full transition-all duration-200";
+                document.getElementById('val-vm').className = "text-xl font-bold text-amber-400 animate-pulse";
+            } else {
+                statBox.className = "mt-auto bg-emerald-900/40 border border-emerald-500 p-3 rounded-xl text-emerald-200 text-xs font-semibold leading-relaxed transition-all";
+                statBox.innerHTML = "<strong>✅ SAFE OPERATION:</strong> Velocity is below the API RP 14E limit. Sand erosion is minimal. Choke integrity is maintained.";
+                hBar.className = "bg-emerald-500 h-full transition-all duration-200";
+                document.getElementById('val-vm').className = "text-xl font-bold text-white";
+            }
+        }
+
+        function drawChoke() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. Pipe Body (Steel)
+            ctx.fillStyle = '#475569';
+            // Horizontal Inlet Pipe (Left)
+            ctx.fillRect(0, C_Y - PIPE_D/2 - 20, C_X + 20, 20); // Top wall
+            ctx.fillRect(0, C_Y + PIPE_D/2, C_X - PIPE_D/2 - 20, 20); // Bottom wall
+            
+            // Vertical Outlet Pipe (Down)
+            ctx.fillRect(C_X - PIPE_D/2 - 20, C_Y + PIPE_D/2, 20, canvas.height); // Left wall
+            ctx.fillRect(C_X + PIPE_D/2, C_Y - PIPE_D/2 - 20, 20, canvas.height); // Right wall
+
+            // Flange details
+            ctx.fillRect(C_X - 180, C_Y - PIPE_D/2 - 40, 30, PIPE_D + 80);
+
+            // 2. Choke Internal Cavity
+            ctx.fillStyle = '#0f172a'; // Void
+            ctx.fillRect(0, C_Y - PIPE_D/2, C_X + PIPE_D/2, PIPE_D); // Horizontal void
+            ctx.fillRect(C_X - PIPE_D/2, C_Y - PIPE_D/2, PIPE_D, canvas.height); // Vertical void
+
+            // 3. The Choke Plug / Trim (Tungsten Carbide)
+            ctx.fillStyle = '#64748b'; // Metallic
+            
+            // Determine plug position based on choke size slider
+            let stemTravel = PIPE_D; // Max vertical travel
+            let openingRatio = isDestroyed ? 1.0 : (chokeSize / 64);
+            let stemY = C_Y - PIPE_D/2 + (stemTravel * (1 - openingRatio));
+
+            // Draw Actuator / Top Bonnet
+            ctx.fillStyle = '#059669'; // Green Subsea Body
+            ctx.fillRect(C_X - PIPE_D/2 - 20, 0, PIPE_D + 40, C_Y - PIPE_D/2 - 20);
+            ctx.fillStyle = '#fff'; ctx.font = "bold 14px Arial"; ctx.textAlign="center";
+            ctx.fillText("SUBSEA CHOKE", C_X, 30);
+
+            if (!isDestroyed) {
+                // The Stem & Plug (Needle shape)
+                ctx.fillStyle = '#94a3b8'; // Silver Stem
+                ctx.beginPath();
+                ctx.moveTo(C_X - 15, C_Y - PIPE_D/2 - 20);
+                ctx.lineTo(C_X + 15, C_Y - PIPE_D/2 - 20);
+                ctx.lineTo(C_X + 10, stemY - 20);
+                ctx.lineTo(C_X, stemY); // Sharp tip
+                ctx.lineTo(C_X - 10, stemY - 20);
+                ctx.fill();
+
+                // Draw Visual Erosion Damage on the Plug
+                if (chokeHealth < 100) {
+                    let damageRadius = (100 - chokeHealth) * 0.3; // Grow as health drops
+                    ctx.fillStyle = '#7f1d1d'; // Rusted/Pitted red
+                    ctx.beginPath();
+                    // Eat away at the tip
+                    ctx.arc(C_X, stemY - 10, damageRadius, 0, Math.PI*2);
+                    ctx.fill();
+                    // Sparkle textures for pitting
+                    ctx.fillStyle = '#000';
+                    for(let i=0; i<damageRadius; i++) {
+                        ctx.fillRect(C_X + (Math.random()-0.5)*damageRadius, stemY - 15 + (Math.random()-0.5)*damageRadius, 1, 1);
+                    }
+                }
+            } else {
+                // Destroyed stem (snapped off)
+                ctx.fillStyle = '#7f1d1d';
+                ctx.beginPath();
+                ctx.moveTo(C_X - 15, C_Y - PIPE_D/2 - 20);
+                ctx.lineTo(C_X + 15, C_Y - PIPE_D/2 - 20);
+                ctx.lineTo(C_X + 10, C_Y - PIPE_D/2 + 20);
+                ctx.lineTo(C_X - 10, C_Y - PIPE_D/2 + 10);
+                ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.fillText("TRIM DESTROYED!", C_X, C_Y - PIPE_D/2 + 40);
+            }
+
+            // The Seat (Bottom restriction)
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(C_X - PIPE_D/2, C_Y + PIPE_D/2 - 10, PIPE_D, 10);
+            ctx.fillStyle = '#0f172a'; // Hole in the seat
+            let seatHole = isDestroyed ? PIPE_D : PIPE_D * 0.6;
+            ctx.fillRect(C_X - seatHole/2, C_Y + PIPE_D/2 - 10, seatHole, 10);
+        }
+
+        function animate() {
+            updatePhysics();
+            drawChoke();
+
+            // Particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Sparks
+            sparks.forEach(s => {
+                s.update();
+                s.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Listeners
+        slQ.addEventListener('input', updatePhysics);
+        slSand.addEventListener('input', updatePhysics);
+        slChoke.addEventListener('input', updatePhysics);
+
+        // Run
+        updatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

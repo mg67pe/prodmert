@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amine Sweetening (AGRU) Dynamics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #a855f7; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #a855f7; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-fuchsia-400 mb-2">Amine Sweetening (AGRU) Dynamics</h1>
+            <p class="text-slate-400 text-sm">Acid Gas (CO₂/H₂S) Removal, Absorption Kinetics, and Contactor Flooding</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Process Controls -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-fuchsia-400 uppercase tracking-widest mb-3 border-b border-fuchsia-900 pb-2">Process Variables</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-lime-400"><span>Sour Gas Inlet Rate</span> <span id="val-gas" class="font-mono">80 MMscfd</span></div>
+                        <input type="range" id="slider-gas" min="20" max="180" step="10" value="80" style="accent-color: #84cc16;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Flows UP. Pushes against falling amine. Excessive rate causes "Flooding".
+                        </div>
+                    </div>
+
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-red-400"><span>Inlet CO₂/H₂S Conc.</span> <span id="val-acid" class="font-mono">5.0 %</span></div>
+                        <input type="range" id="slider-acid" min="1.0" max="15.0" step="0.5" value="5.0" style="accent-color: #ef4444;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Acid gas percentage in raw feed. High concentration requires immense amine circulation to clean.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-fuchsia-400"><span>Lean Amine Circ. Rate</span> <span id="val-amine" class="font-mono">300 gpm</span></div>
+                        <input type="range" id="slider-amine" min="50" max="800" step="50" value="300" style="accent-color: #c026d3;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Flows DOWN. Amine chemically binds with CO₂ and H₂S. Defines the absorption capacity.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-1">Product Quality (Sales Gas)</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="CO2 content in export gas">Outlet CO₂</div>
+                            <div id="val-co2-out" class="text-xl font-bold text-sky-400">0.5 %</div>
+                            <div class="text-[9px] text-slate-500">Pipeline Spec: < 2.0%</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Amine Saturation Level">Amine Rich Loading</div>
+                            <div id="val-loading" class="text-xl font-bold text-fuchsia-400">0.35</div>
+                            <div class="text-[9px] text-slate-500">mol / mol (Max: 0.5)</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all">
+                        ✅ ON-SPEC (SWEET GAS) <br><span class="text-slate-300 font-normal mt-1 block">Acid gas removed successfully. Safe for export.</span>
+                    </div>
+                </div>
+
+                <!-- Theory Box -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex-1 overflow-y-auto custom-scrollbar">
+                    <h3 class="text-xs font-bold text-fuchsia-400 uppercase tracking-widest mb-2 border-b border-slate-600 pb-1">Absorption Kinetics</h3>
+                    <p class="text-xs text-slate-300 mb-2"><strong>Sour Gas (Green):</strong> Enters from the bottom loaded with highly corrosive and toxic H₂S/CO₂.</p>
+                    <p class="text-xs text-slate-300 mb-2"><strong>Lean Amine (Light Purple):</strong> MDEA or DEA solution pumped from the top. It selectively binds with acid gases.</p>
+                    <p class="text-xs text-slate-300"><strong>Sweet Gas (Blue):</strong> Clean methane exits the top, ready for the dehydration unit or pipeline.</p>
+                </div>
+            </div>
+
+            <div class="xl:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[750px]">
+                <canvas id="contactorCanvas" width="800" height="700" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Fluid Particle Legend</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#fdf4ff] shadow-[0_0_5px_#fdf4ff]"></span> Lean Amine (Fresh/Active)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#7e22ce] shadow-[0_0_5px_#7e22ce]"></span> Rich Amine (Saturated with Acid)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#84cc16] shadow-[0_0_5px_#84cc16]"></span> Sour Gas (High H₂S / CO₂)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#38bdf8] shadow-[0_0_5px_#38bdf8]"></span> Sweet Gas (Clean Sales Gas)</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-fuchsia-400 font-bold">
+                        Acid molecules transfer from Gas to Amine!
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('contactorCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slGas = document.getElementById('slider-gas');
+        const slAcid = document.getElementById('slider-acid');
+        const slAmine = document.getElementById('slider-amine');
+
+        // Physics State
+        let qGas = 80; // MMscfd
+        let acidInlet = 5.0; // %
+        let qAmine = 300; // gpm
+        
+        let acidOutlet = 0; // % CO2/H2S in sweet gas
+        let amineLoading = 0; // mol/mol
+        let isFlooding = false;
+
+        // Visual Geometry Constants
+        const CX = canvas.width / 2;
+        const TOWER_W = 280;
+        const TOWER_H = 600;
+        const T_TOP = 50;
+        const T_BOT = T_TOP + TOWER_H;
+        
+        // Define Trays (Valve/Bubble Cap Trays)
+        const N_TRAYS = 5;
+        const TRAY_SPACING = (TOWER_H - 120) / N_TRAYS;
+        let trays = [];
+        for (let i = 0; i < N_TRAYS; i++) {
+            trays.push({
+                y: T_TOP + 80 + i * TRAY_SPACING,
+                weirSide: (i % 2 === 0) ? 'right' : 'left' // Alternating downcomers
+            });
+        }
+
+        let gasParticles = [];
+        let amineParticles = [];
+
+        // --- PARTICLE CLASSES ---
+        class GasParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                this.x = CX - (TOWER_W/2) + 40 + Math.random() * (TOWER_W - 80);
+                this.y = randomize ? T_TOP + Math.random()*TOWER_H : T_BOT - 20; 
+                this.active = true;
+                this.acidLevel = 1.0; // 1.0 = highly sour, 0.0 = completely sweet
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -(2 + (qGas / 60)); // Rises based on gas rate
+                this.state = 'rising'; 
+            }
+            update() {
+                if (!this.active) return;
+                
+                let currentVy = this.vy;
+                this.x += this.vx;
+
+                // Wall bounds
+                if (this.x < CX - TOWER_W/2 + 10) { this.x = CX - TOWER_W/2 + 10; this.vx *= -1; }
+                if (this.x > CX + TOWER_W/2 - 10) { this.x = CX + TOWER_W/2 - 10; this.vx *= -1; }
+
+                // Mass Transfer on Trays
+                for (let tray of trays) {
+                    if (this.y < tray.y && this.y > tray.y - 25) {
+                        // In the liquid froth
+                        let amineToAcidRatio = qAmine / (qGas * acidInlet * 1.5); 
+                        let extractionRate = 0.025 * amineToAcidRatio; 
+                        
+                        this.acidLevel -= extractionRate;
+                        if (this.acidLevel < 0) this.acidLevel = 0;
+
+                        // Wobble in bubbles
+                        currentVy = this.vy * 0.4;
+                        this.x += (Math.random() - 0.5) * 5;
+                    }
+                }
+
+                this.y += currentVy;
+
+                // Exit
+                if (this.y < T_TOP + 10) {
+                    if (isFlooding) {
+                        if (this.y < T_TOP - 20) this.reset();
+                    } else {
+                        if (this.x > CX - 20 && this.x < CX + 20) {
+                            this.y -= 5;
+                            if (this.y < 0) this.reset();
+                        } else {
+                            this.x += (CX - this.x) * 0.1; // funnel to exit
+                        }
+                    }
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3.5, 0, Math.PI * 2);
+                
+                // Color mapping: 1.0 = Lime Green (Sour), 0.0 = Sky Blue (Sweet)
+                // Sour: 132, 204, 22
+                // Sweet: 56, 189, 248
+                let r = Math.floor(56 + this.acidLevel * (132 - 56));
+                let g = Math.floor(189 + this.acidLevel * (204 - 189));
+                let b = Math.floor(248 + this.acidLevel * (22 - 248));
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+
+                // Draw Acid gas molecules (dark dots) if sour
+                if (this.acidLevel > 0.3) {
+                    ctx.fillStyle = '#064e3b';
+                    ctx.beginPath(); ctx.arc(this.x - 1, this.y - 1, 1, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        class AmineParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                this.x = CX + (Math.random() - 0.5) * 80;
+                this.y = randomize ? T_TOP + Math.random()*TOWER_H : T_TOP + 40; 
+                this.active = true;
+                this.loadLevel = 0.0; // 0 = Lean, 1 = Rich
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = 2 + (qAmine / 200); 
+                this.currentTray = -1;
+                
+                if (randomize) {
+                    for (let i=0; i<trays.length; i++) {
+                        if (this.y < trays[i].y) { this.currentTray = i; break; }
+                    }
+                }
+            }
+            update() {
+                if (!this.active) return;
+
+                // FLOODING LOGIC
+                if (isFlooding && this.y < T_TOP + 150) {
+                    // Gas velocity blowing amine out the top
+                    this.vy = -(2 + (qGas/60));
+                    this.y += this.vy;
+                    this.x += (Math.random() - 0.5) * 3;
+                    if (this.y < 0) this.reset(); 
+                    return;
+                }
+
+                if (this.currentTray === -1) {
+                    this.y += this.vy;
+                    this.x += this.vx;
+                    if (this.y > trays[0].y - 20) this.currentTray = 0;
+                } else if (this.currentTray < N_TRAYS) {
+                    let tray = trays[this.currentTray];
+                    
+                    if (this.y < tray.y) {
+                        this.y += this.vy * 0.2; 
+                        if (this.y > tray.y - 5) this.y = tray.y - 5; 
+                        
+                        let speedX = (qAmine / 150);
+                        if (tray.weirSide === 'right') {
+                            this.x += speedX;
+                            if (this.x > CX + TOWER_W/2 - 40) { this.currentTray++; this.y += 10; }
+                        } else {
+                            this.x -= speedX;
+                            if (this.x < CX - TOWER_W/2 + 40) { this.currentTray++; this.y += 10; }
+                        }
+
+                        // Absorb acid gas
+                        if (this.loadLevel < 1.0) {
+                            this.loadLevel += 0.005 + (acidInlet/1000); 
+                        }
+
+                    } else {
+                        this.y += this.vy * 1.5; // Free fall
+                    }
+                } else {
+                    this.y += this.vy;
+                    if (this.y > T_BOT - 10) this.y = T_BOT - 10; 
+                    if (this.y >= T_BOT - 15) {
+                        this.x += 2;
+                        if (this.x > CX + TOWER_W/2) this.reset();
+                    }
+                }
+
+                if (this.x < CX - TOWER_W/2 + 10) this.x = CX - TOWER_W/2 + 10;
+                if (this.x > CX + TOWER_W/2 - 10) this.x = CX + TOWER_W/2 - 10;
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3.5, 0, Math.PI * 2);
+                
+                // Color mapping: 0.0 = Light Pink (Lean), 1.0 = Deep Purple (Rich)
+                // Lean: 253, 244, 255
+                // Rich: 126, 34, 206
+                let r = Math.floor(253 + this.loadLevel * (126 - 253)); 
+                let g = Math.floor(244 + this.loadLevel * (34 - 244)); 
+                let b = Math.floor(255 + this.loadLevel * (206 - 255)); 
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+
+                // Draw absorbed acid dots
+                if (this.loadLevel > 0.4) {
+                    ctx.fillStyle = '#064e3b';
+                    ctx.beginPath(); ctx.arc(this.x + 1, this.y + 1, 1, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        // Initialize particles
+        for(let i=0; i<250; i++) gasParticles.push(new GasParticle());
+        for(let i=0; i<150; i++) amineParticles.push(new AmineParticle());
+
+        function calculatePhysics() {
+            qGas = parseInt(slGas.value);
+            acidInlet = parseFloat(slAcid.value);
+            qAmine = parseInt(slAmine.value);
+
+            document.getElementById('val-gas').innerText = qGas + " MMscfd";
+            document.getElementById('val-acid').innerText = acidInlet.toFixed(1) + " %";
+            document.getElementById('val-amine').innerText = qAmine + " gpm";
+
+            // Amine capacity vs Gas Acid Load
+            let molesAcidIn = qGas * acidInlet;
+            let molesAmineCirc = qAmine * 2.5; // Arbitrary scale for simulation
+            
+            // Loading (moles acid per mole amine). Typically maxes around 0.45 before severe corrosion
+            amineLoading = molesAcidIn / Math.max(1, molesAmineCirc);
+            
+            let removalEfficiency = 0;
+            if (amineLoading < 0.2) removalEfficiency = 0.99; // Plenty of amine
+            else if (amineLoading < 0.4) removalEfficiency = 0.90; // Struggling
+            else removalEfficiency = 0.60; // Saturated, acid gas passing through
+
+            acidOutlet = acidInlet * (1 - removalEfficiency);
+            
+            // Flooding Check (Gas velocity > Gravitational liquid fall)
+            isFlooding = qGas > 150;
+
+            // Update UI
+            let elCo2 = document.getElementById('val-co2-out');
+            let elLoad = document.getElementById('val-loading');
+            let statusBox = document.getElementById('status-box');
+
+            elCo2.innerText = acidOutlet.toFixed(2) + " %";
+            elLoad.innerText = amineLoading.toFixed(2);
+
+            if (isFlooding) {
+                elCo2.className = "text-xl font-bold text-red-500 animate-pulse";
+                statusBox.className = "bg-red-900/40 border border-red-500 p-3 rounded-lg text-red-200 text-xs font-semibold leading-relaxed text-center transition-all shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+                statusBox.innerHTML = "🚨 TOWER FLOODING (CARRY-OVER)! <br><span class='text-red-300 font-normal mt-1 block'>Gas velocity is too high. Amine liquid is being blown out the top of the contactor. Gas is not being sweetened!</span>";
+            } else if (acidOutlet > 2.0) {
+                elCo2.className = "text-xl font-bold text-amber-500 animate-pulse";
+                elLoad.className = "text-xl font-bold text-red-400";
+                statusBox.className = "bg-amber-900/40 border border-amber-500 p-3 rounded-lg text-amber-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                statusBox.innerHTML = `⚠️ OFF-SPEC GAS (HIGH CO₂/H₂S) <br><span class='text-amber-100 font-normal mt-1 block'>Amine is fully saturated (Rich loading > 0.4). Not enough lean amine to clean the incoming sour gas. Increase Amine Circulation!</span>`;
+            } else {
+                elCo2.className = "text-xl font-bold text-sky-400";
+                elLoad.className = "text-xl font-bold text-fuchsia-400";
+                statusBox.className = "bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                statusBox.innerHTML = "✅ ON-SPEC (SWEET GAS) <br><span class='text-emerald-100 font-normal mt-1 block'>Optimal Absorption. Acid gas successfully removed. Gas meets pipeline specifications.</span>";
+            }
+        }
+
+        function drawTower() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Piping Connections
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(CX - 20, T_TOP - 40, 40, 60); // Sweet Gas Outlet (Top)
+            ctx.fillRect(CX - TOWER_W/2 - 60, T_BOT - 60, 60, 40); // Sour Gas Inlet (Bottom Left)
+            ctx.fillRect(CX + TOWER_W/2, T_BOT - 30, 60, 20); // Rich Amine Outlet (Bottom Right)
+            ctx.fillRect(CX - 100, T_TOP + 20, 100, 20); // Lean Amine Inlet (Top Left)
+
+            // Tower Body
+            ctx.fillStyle = '#64748b'; // Metal Shell
+            ctx.beginPath();
+            ctx.roundRect(CX - TOWER_W/2, T_TOP, TOWER_W, TOWER_H, 20);
+            ctx.fill();
+
+            // Internal Void
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(CX - TOWER_W/2 + 10, T_TOP + 10, TOWER_W - 20, TOWER_H - 20, 10);
+            ctx.fill();
+
+            // Draw Trays (Valve Trays)
+            for (let i = 0; i < N_TRAYS; i++) {
+                let tray = trays[i];
+                ctx.fillStyle = '#475569'; 
+                
+                if (tray.weirSide === 'right') {
+                    ctx.fillRect(CX - TOWER_W/2 + 10, tray.y, TOWER_W - 40, 5);
+                    ctx.fillRect(CX + TOWER_W/2 - 30, tray.y - 15, 5, 20); // Weir
+                    ctx.fillRect(CX + TOWER_W/2 - 50, tray.y + 5, 5, TRAY_SPACING - 20); // Downcomer
+                } else {
+                    ctx.fillRect(CX - TOWER_W/2 + 30, tray.y, TOWER_W - 40, 5);
+                    ctx.fillRect(CX - TOWER_W/2 + 25, tray.y - 15, 5, 20);
+                    ctx.fillRect(CX - TOWER_W/2 + 45, tray.y + 5, 5, TRAY_SPACING - 20);
+                }
+
+                // Bubble Caps / Valves
+                ctx.fillStyle = '#94a3b8';
+                for (let bx = CX - TOWER_W/2 + 60; bx < CX + TOWER_W/2 - 60; bx += 25) {
+                    ctx.fillRect(bx - 3, tray.y - 8, 6, 8);
+                    ctx.fillRect(bx - 8, tray.y - 10, 16, 3); // Valve cap
+                }
+
+                // Liquid Froth Level
+                ctx.fillStyle = 'rgba(232, 121, 249, 0.15)'; // Faint purple tint
+                if (tray.weirSide === 'right') {
+                    ctx.fillRect(CX - TOWER_W/2 + 10, tray.y - 20, TOWER_W - 40, 20);
+                } else {
+                    ctx.fillRect(CX - TOWER_W/2 + 30, tray.y - 20, TOWER_W - 40, 20);
+                }
+            }
+
+            // Bottom Liquid Pool (Rich Amine)
+            ctx.fillStyle = 'rgba(126, 34, 206, 0.4)'; // Dark Purple Rich Amine
+            ctx.fillRect(CX - TOWER_W/2 + 10, T_BOT - 40, TOWER_W - 20, 30);
+
+            // Labels
+            ctx.fillStyle = '#fff'; ctx.font = '12px Arial font-bold';
+            ctx.fillText("SOUR GAS IN", CX - TOWER_W/2 - 140, T_BOT - 35);
+            ctx.fillText("SWEET GAS OUT", CX + 25, T_TOP - 20);
+            ctx.fillText("LEAN AMINE IN", CX - 195, T_TOP + 35);
+            ctx.fillText("RICH AMINE OUT", CX + TOWER_W/2 + 65, T_BOT - 15);
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.font = '24px Arial font-bold'; ctx.textAlign="center";
+            ctx.fillText("AMINE CONTACTOR", CX, T_TOP + 50); ctx.textAlign="left"; 
+        }
+
+        function animate() {
+            calculatePhysics();
+            drawTower();
+
+            let targetGas = Math.floor(qGas * 2.5);
+            let targetAmine = Math.floor(qAmine * 0.4);
+            
+            if (gasParticles.length < targetGas) gasParticles.push(new GasParticle());
+            else if (gasParticles.length > targetGas) gasParticles[0].active = false;
+
+            if (amineParticles.length < targetAmine) amineParticles.push(new AmineParticle());
+            else if (amineParticles.length > targetAmine) amineParticles[0].active = false;
+
+            gasParticles.forEach(p => { p.update(); p.draw(); });
+            amineParticles.forEach(p => { p.update(); p.draw(); });
+            
+            gasParticles = gasParticles.filter(p => p.active);
+            amineParticles = amineParticles.filter(p => p.active);
+
+            requestAnimationFrame(animate);
+        }
+
+        slGas.addEventListener('input', calculatePhysics);
+        slAcid.addEventListener('input', calculatePhysics);
+        slAmine.addEventListener('input', calculatePhysics);
+        
+        calculatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

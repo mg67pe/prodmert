@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea Network Backpressure Optimization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { width: 100%; margin-bottom: 0.5rem; cursor: pointer; }
+        .choke-w1 { accent-color: #38bdf8; } /* Sky */
+        .choke-w2 { accent-color: #10b981; } /* Emerald */
+        .choke-w3 { accent-color: #f59e0b; } /* Amber */
+        .choke-w4 { accent-color: #ef4444; } /* Red */
+        
+        .well-card { transition: all 0.3s ease; }
+        .well-card.dead { border-color: #ef4444; background-color: rgba(127, 29, 29, 0.2); }
+        .well-card.loading { border-color: #f59e0b; background-color: rgba(180, 83, 9, 0.2); }
+        .well-card.flowing { border-color: #10b981; background-color: rgba(6, 78, 59, 0.2); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Subsea Network Backpressure Optimization</h1>
+            <p class="text-slate-400 text-sm">Commingled Multi-Well Production, Choke Balancing, and Liquid Loading Management</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Choke Controls -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl flex flex-col gap-4">
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-widest border-b border-slate-600 pb-2">Subsea Choke Controls</h2>
+                    
+                    <div>
+                        <div class="slider-label text-sky-400"><span>Well 1 (Strong - 4500 psi)</span> <span id="val-choke-0" class="font-mono">100%</span></div>
+                        <input type="range" id="slider-choke-0" class="choke-w1" min="0" max="100" value="100">
+                    </div>
+                    
+                    <div>
+                        <div class="slider-label text-emerald-400"><span>Well 2 (Medium - 3800 psi)</span> <span id="val-choke-1" class="font-mono">100%</span></div>
+                        <input type="range" id="slider-choke-1" class="choke-w2" min="0" max="100" value="100">
+                    </div>
+
+                    <div>
+                        <div class="slider-label text-amber-400"><span>Well 3 (Weak - 3200 psi)</span> <span id="val-choke-2" class="font-mono">100%</span></div>
+                        <input type="range" id="slider-choke-2" class="choke-w3" min="0" max="100" value="100">
+                    </div>
+
+                    <div>
+                        <div class="slider-label text-red-400"><span>Well 4 (Depleted - 2600 psi)</span> <span id="val-choke-3" class="font-mono">100%</span></div>
+                        <input type="range" id="slider-choke-3" class="choke-w4" min="0" max="100" value="100">
+                    </div>
+
+                    <div class="text-[10px] text-slate-400 bg-slate-900 p-3 rounded border border-slate-700 mt-2">
+                        <strong>Goal:</strong> Maximize total field production. Strong wells at 100% create high backpressure at the manifold, killing weak wells with liquid loading. Choke back strong wells to revive the weak ones!
+                    </div>
+
+                    <button onclick="autoOptimize()" class="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-bold transition border border-slate-500 text-xs">
+                        🤖 Auto Optimize (AI)
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Middle/Right Panel: Canvas & Dashboards -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- Main KPIs -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="bg-slate-800 border-b-4 border-sky-500 p-4 rounded-xl shadow-lg text-center flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Total Field Production</div>
+                        <div id="kpi-total-q" class="text-4xl font-bold text-sky-400">0.0</div>
+                        <div class="text-[10px] text-slate-500 mt-1">MMscfd (Maximize this!)</div>
+                    </div>
+                    
+                    <div class="bg-slate-800 border border-slate-600 p-4 rounded-xl shadow-lg text-center flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider" title="Pressure at gathering point">Manifold Backpressure</div>
+                        <div id="kpi-manifold-p" class="text-3xl font-bold text-amber-400">0</div>
+                        <div class="text-[10px] text-slate-500 mt-1">psia</div>
+                    </div>
+
+                    <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl flex items-center justify-center text-center transition-all">
+                        Analyzing Network...
+                    </div>
+                </div>
+
+                <!-- Individual Well Cards -->
+                <div class="grid grid-cols-4 gap-4">
+                    <div id="card-w1" class="well-card flowing border p-3 rounded-lg text-center shadow">
+                        <div class="font-bold text-sky-400 text-sm border-b border-slate-600 pb-1 mb-2">Well 1 (Strong)</div>
+                        <div id="q-w1" class="text-xl font-bold text-white mb-1">0.0</div>
+                        <div id="stat-w1" class="text-[10px] uppercase text-emerald-400">Flowing</div>
+                    </div>
+                    <div id="card-w2" class="well-card flowing border p-3 rounded-lg text-center shadow">
+                        <div class="font-bold text-emerald-400 text-sm border-b border-slate-600 pb-1 mb-2">Well 2 (Medium)</div>
+                        <div id="q-w2" class="text-xl font-bold text-white mb-1">0.0</div>
+                        <div id="stat-w2" class="text-[10px] uppercase text-emerald-400">Flowing</div>
+                    </div>
+                    <div id="card-w3" class="well-card border p-3 rounded-lg text-center shadow">
+                        <div class="font-bold text-amber-400 text-sm border-b border-slate-600 pb-1 mb-2">Well 3 (Weak)</div>
+                        <div id="q-w3" class="text-xl font-bold text-white mb-1">0.0</div>
+                        <div id="stat-w3" class="text-[10px] uppercase">Status</div>
+                    </div>
+                    <div id="card-w4" class="well-card border p-3 rounded-lg text-center shadow">
+                        <div class="font-bold text-red-400 text-sm border-b border-slate-600 pb-1 mb-2">Well 4 (Depleted)</div>
+                        <div id="q-w4" class="text-xl font-bold text-white mb-1">0.0</div>
+                        <div id="stat-w4" class="text-[10px] uppercase">Status</div>
+                    </div>
+                </div>
+
+                <!-- Network Canvas -->
+                <div class="flex justify-center bg-[#020617] rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[450px]">
+                    <canvas id="networkCanvas" width="900" height="430" class="max-w-full h-auto rounded-lg"></canvas>
+                    
+                    <div class="absolute top-4 right-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                        <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Subsea Architecture</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-2 bg-slate-400 rounded-sm"></span> Subsea Choke Valves</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#f59e0b] rounded-sm"></span> Gathering Manifold</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-2 bg-[#2563eb] rounded-sm"></span> Liquid Loading (Water)</div>
+                        <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-sky-300">
+                            Particle speed indicates flow rate.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('networkCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Well Data Objects
+        const wells = [
+            { id: 0, name: "W1", Pr: 4500, PI: 0.10, maxCv: 40, qCrit: 18, choke: 100, q: 0, load: 0, color: '#38bdf8', yPos: 50 },
+            { id: 1, name: "W2", Pr: 3800, PI: 0.08, maxCv: 40, qCrit: 15, choke: 100, q: 0, load: 0, color: '#10b981', yPos: 150 },
+            { id: 2, name: "W3", Pr: 3200, PI: 0.06, maxCv: 40, qCrit: 12, choke: 100, q: 0, load: 0, color: '#f59e0b', yPos: 250 },
+            { id: 3, name: "W4", Pr: 2600, PI: 0.05, maxCv: 40, qCrit: 10, choke: 100, q: 0, load: 0, color: '#ef4444', yPos: 350 }
+        ];
+
+        let P_shore = 800; // Constant pressure at surface facility
+        let K_export = 0.08; // Friction factor for export line
+        let Q_total = 0;
+        let P_man = 1500; // Manifold pressure starting guess
+
+        let particles = [];
+        let animationTime = 0;
+
+        // Constants for Drawing
+        const MANIFOLD_X = 650;
+        const MANIFOLD_Y = 200;
+        const WELL_X = 100;
+
+        // Slider Listeners
+        for(let i=0; i<4; i++) {
+            document.getElementById(`slider-choke-${i}`).addEventListener('input', (e) => {
+                wells[i].choke = parseInt(e.target.value);
+                document.getElementById(`val-choke-${i}`).innerText = wells[i].choke + "%";
+            });
+        }
+
+        class GasParticle {
+            constructor(wellId) {
+                this.well = wells[wellId];
+                this.reset(true);
+            }
+            reset(randomize = false) {
+                this.active = true;
+                this.x = WELL_X + 20; 
+                this.y = this.well.yPos;
+                this.reachedManifold = false;
+                if (randomize) this.x += Math.random() * (MANIFOLD_X - WELL_X);
+            }
+            update() {
+                if (!this.active || this.well.q <= 0) return;
+
+                // Speed based on well flow rate
+                let speed = Math.max(0.5, this.well.q / 10);
+
+                if (!this.reachedManifold) {
+                    // Move right to junction
+                    this.x += speed;
+                    if (this.x >= MANIFOLD_X) {
+                        this.x = MANIFOLD_X;
+                        this.reachedManifold = true;
+                    }
+                } else {
+                    // Inside manifold, move towards center Y
+                    let dy = MANIFOLD_Y - this.y;
+                    if (Math.abs(dy) > 2) {
+                        this.y += Math.sign(dy) * speed;
+                    } else {
+                        // Move to export line
+                        this.x += speed * (Q_total / 80); // Speed up in export line
+                    }
+                }
+
+                // Add turbulence
+                this.y += (Math.random() - 0.5) * 2;
+
+                if (this.x > canvas.width) this.reset();
+            }
+            draw() {
+                if (!this.active || this.well.q <= 0) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = this.well.color;
+                ctx.shadowBlur = 5; ctx.shadowColor = this.well.color;
+                ctx.fill(); ctx.shadowBlur = 0;
+            }
+        }
+
+        // Initialize particles
+        for(let i=0; i<4; i++) {
+            for(let p=0; p<60; p++) particles.push(new GasParticle(i));
+        }
+
+        function calculatePhysics() {
+            let target_Q_total = 0;
+            
+            // 1. Calculate P_man based on current Q_total (Export Line Pressure Drop)
+            // P_man = P_shore + K * Q^2
+            let target_P_man = P_shore + K_export * Math.pow(Q_total, 1.8);
+            P_man += (target_P_man - P_man) * 0.1; // Smooth transition
+
+            let deadWells = 0;
+            let loadedWells = 0;
+
+            // 2. Calculate Flow for each well
+            for (let i = 0; i < 4; i++) {
+                let w = wells[i];
+                let chokeFrac = w.choke / 100;
+                
+                if (chokeFrac === 0) {
+                    w.q = 0;
+                    w.load -= 1; // Drain if shut in
+                    if (w.load < 0) w.load = 0;
+                    continue;
+                }
+
+                // Simplified Nodal Equation
+                // P_wf = P_R - q/PI
+                // P_wh = P_wf - P_hydro - dP_fric
+                // dP_choke = q^2 / Cv^2
+                // P_man = P_wh - dP_choke
+                
+                let P_hydro = 800 + (w.load * 15); // Liquid load adds massive hydrostatic weight
+                w.Phydro = P_hydro;
+                let available_dP = w.Pr - P_man - P_hydro;
+                
+                if (available_dP <= 0) {
+                    // Backpressure is higher than Reservoir Pressure - Well is DEAD
+                    w.q = 0;
+                    // Liquid falls back and fills the wellbore
+                    w.load += 2.0; 
+                    if (w.load > 100) w.load = 100;
+                } else {
+                    // Quadratic solver for q: A*q^2 + B*q - C = 0
+                    let Cv_eff = chokeFrac * w.maxCv;
+                    let A_choke = 1 / Math.pow(Cv_eff + 0.001, 2);
+                    let A_tubing = 0.05; // Tubing friction
+                    let A = A_choke + A_tubing;
+                    let B = 1 / w.PI;
+                    let C = available_dP;
+
+                    let q = (-B + Math.sqrt(B*B + 4*A*C)) / (2*A);
+                    w.q = q;
+
+                    // Liquid Loading Dynamics (Turner velocity simplified)
+                    if (w.q < w.qCrit) {
+                        w.load += 0.5; // Starts loading up
+                        if (w.load > 100) w.load = 100;
+                    } else {
+                        w.load -= 1.5; // Strong flow clears the liquid
+                        if (w.load < 0) w.load = 0;
+                    }
+                }
+
+                target_Q_total += w.q;
+
+                // Status tracking
+                if (w.q === 0) deadWells++;
+                else if (w.load > 10) loadedWells++;
+            }
+
+            Q_total += (target_Q_total - Q_total) * 0.1;
+
+            updateUI(deadWells, loadedWells);
+        }
+
+        function updateUI(deadWells, loadedWells) {
+            document.getElementById('kpi-total-q').innerText = Q_total.toFixed(1);
+            document.getElementById('kpi-manifold-p').innerText = Math.floor(P_man);
+
+            let insight = document.getElementById('insight-box');
+            
+            if (deadWells > 0) {
+                insight.className = "bg-red-900/60 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-[0_0_15px_rgba(220,38,38,0.3)] flex items-center justify-center text-center transition-all text-red-100";
+                insight.innerHTML = "🚨 WELL DEAD (LIQUID LOADING) <br><span class='text-xs font-normal mt-1 block'>High manifold backpressure prevented the weak well from flowing. Liquids accumulated and killed the well. Choke back strong wells!</span>";
+            } else if (loadedWells > 0) {
+                insight.className = "bg-amber-900/60 border border-amber-500 p-4 rounded-xl text-sm font-semibold shadow-[0_0_15px_rgba(245,158,11,0.2)] flex items-center justify-center text-center transition-all text-amber-100";
+                insight.innerHTML = "⚠️ LIQUID LOADING RISK <br><span class='text-xs font-normal mt-1 block'>A weak well's flow rate is below the critical limit. Liquids are pooling in the tubing. It will die if pressure isn't reduced.</span>";
+            } else {
+                insight.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl flex items-center justify-center text-center transition-all text-emerald-200";
+                insight.innerHTML = "✅ OPTIMAL COMMINGLED FLOW <br><span class='text-xs font-normal mt-1 block'>All wells are flowing above critical rate. Manifold pressure is balanced. Liquids are continuously swept.</span>";
+            }
+
+            // Update Individual Well Cards
+            for (let i = 0; i < 4; i++) {
+                let w = wells[i];
+                let card = document.getElementById(`card-w${i+1}`);
+                let qEl = document.getElementById(`q-w${i+1}`);
+                let statEl = document.getElementById(`stat-w${i+1}`);
+
+                qEl.innerText = w.q.toFixed(1);
+
+                if (w.choke === 0) {
+                    card.className = "well-card border border-slate-600 p-3 rounded-lg text-center shadow bg-slate-800";
+                    statEl.innerText = "SHUT-IN"; statEl.className = "text-[10px] uppercase text-slate-400";
+                } else if (w.q === 0) {
+                    card.className = "well-card dead border p-3 rounded-lg text-center shadow";
+                    statEl.innerText = "DEAD (LOADED)"; statEl.className = "text-[10px] uppercase text-red-400 font-bold";
+                } else if (w.load > 10) {
+                    card.className = "well-card loading border p-3 rounded-lg text-center shadow";
+                    statEl.innerText = "LIQUID LOADING..."; statEl.className = "text-[10px] uppercase text-amber-400 font-bold animate-pulse";
+                } else if (w.choke < 100) {
+                    card.className = "well-card flowing border p-3 rounded-lg text-center shadow";
+                    statEl.innerText = "CHOKED (STABLE)"; statEl.className = "text-[10px] uppercase text-sky-400 font-bold";
+                } else {
+                    card.className = "well-card flowing border p-3 rounded-lg text-center shadow";
+                    statEl.innerText = "FLOWING"; statEl.className = "text-[10px] uppercase text-emerald-400";
+                }
+            }
+        }
+
+        function autoOptimize() {
+            // A simple AI algorithm to balance the network
+            // Choke back the strongest wells (W1 and W2) to allow W3 and W4 to flow
+            document.getElementById('slider-choke-0').value = 45;
+            document.getElementById('slider-choke-1').value = 65;
+            document.getElementById('slider-choke-2').value = 100;
+            document.getElementById('slider-choke-3').value = 100;
+            
+            for(let i=0; i<4; i++) {
+                wells[i].choke = parseInt(document.getElementById(`slider-choke-${i}`).value);
+                document.getElementById(`val-choke-${i}`).innerText = wells[i].choke + "%";
+            }
+        }
+
+        function drawNetwork() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Export Line
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 14; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(MANIFOLD_X, MANIFOLD_Y); ctx.lineTo(canvas.width, MANIFOLD_Y); ctx.stroke();
+            ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(MANIFOLD_X, MANIFOLD_Y); ctx.lineTo(canvas.width, MANIFOLD_Y); ctx.stroke();
+
+            // Draw Flowlines from Wells to Manifold
+            for (let i = 0; i < 4; i++) {
+                let w = wells[i];
+                ctx.strokeStyle = '#475569'; ctx.lineWidth = 10;
+                ctx.beginPath(); ctx.moveTo(WELL_X + 20, w.yPos); ctx.lineTo(MANIFOLD_X, w.yPos); ctx.lineTo(MANIFOLD_X, MANIFOLD_Y); ctx.stroke();
+                
+                ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(WELL_X + 20, w.yPos); ctx.lineTo(MANIFOLD_X, w.yPos); ctx.lineTo(MANIFOLD_X, MANIFOLD_Y); ctx.stroke();
+            }
+
+            // Draw Subsea Manifold
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(MANIFOLD_X - 15, MANIFOLD_Y - 50, 30, 250);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(MANIFOLD_X - 10, MANIFOLD_Y - 45, 20, 240);
+            ctx.fillStyle = '#fff'; ctx.font="11px Arial font-bold";
+            ctx.fillText("MANIFOLD", MANIFOLD_X - 30, MANIFOLD_Y - 60);
+
+            // Draw Wellheads and Chokes
+            for (let i = 0; i < 4; i++) {
+                let w = wells[i];
+                
+                // Wellhead Base (Tubing)
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(WELL_X - 30, w.yPos - 15, 50, 30);
+                
+                // Liquid Load Indicator inside wellhead
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(WELL_X - 25, w.yPos - 10, 20, 20);
+                if (w.load > 0) {
+                    ctx.fillStyle = '#2563eb'; // Water
+                    let h = (w.load / 100) * 20;
+                    ctx.fillRect(WELL_X - 25, w.yPos + 10 - h, 20, h);
+                }
+
+                // Label
+                ctx.fillStyle = w.color;
+                ctx.fillText(`W${i+1} (${w.Pr} psi)`, WELL_X - 100, w.yPos + 4);
+
+                // Choke Valve
+                let chokeSize = 20;
+                let chokeX = WELL_X + 50;
+                ctx.fillStyle = w.choke === 0 ? '#ef4444' : (w.choke < 100 ? '#f59e0b' : '#10b981');
+                
+                // Draw Bowtie Valve
+                ctx.beginPath();
+                ctx.moveTo(chokeX - 10, w.yPos - 10);
+                ctx.lineTo(chokeX + 10, w.yPos + 10);
+                ctx.lineTo(chokeX + 10, w.yPos - 10);
+                ctx.lineTo(chokeX - 10, w.yPos + 10);
+                ctx.fill();
+
+                // Draw stem indicating closure
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(chokeX - 2, w.yPos - 20, 4, 10);
+                let stemDrop = ((100 - w.choke) / 100) * 10;
+                ctx.fillRect(chokeX - 4, w.yPos - 20 + stemDrop, 8, 4);
+
+                // Pressure indicator before choke
+                let displayPressure = w.Phydro !== undefined ? Math.floor(w.Pr - w.Phydro) : w.Pr - 800;
+                ctx.fillStyle = '#cbd5e1'; ctx.font="9px Arial";
+                ctx.fillText(displayPressure + " psi", WELL_X + 25, w.yPos - 10);
+            }
+
+            // Target facility label
+            ctx.fillStyle = '#94a3b8'; ctx.font="14px Arial";
+            ctx.fillText(`To Surface Facility (${P_shore} psi) \u2192`, canvas.width - 200, MANIFOLD_Y - 15);
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            
+            calculatePhysics();
+            drawNetwork();
+
+            // Draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        animate();
+
+    </script>
+</body>
+</html>

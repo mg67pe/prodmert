@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea Gas-Liquid Separation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #020617; border-radius: 0.5rem; border: 1px solid #1e293b; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); }
+        .control-btn { transition: all 0.2s ease; }
+        .control-btn:active { transform: scale(0.95); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Subsea Gas-Liquid Separation (Denizaltı Ayrıştırma)</h1>
+            <p class="text-slate-400 text-sm">170km Tie-Back Hatlarında Karşı Basıncı (Backpressure) Düşürme ve Üretim Optimizasyonu</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">Üretim Parametreleri</h2>
+                    
+                    <div class="mb-4">
+                        <div class="slider-label text-blue-400"><span>Kuyu Su Kesintisi (Water Cut)</span> <span id="val-water" class="font-mono">40%</span></div>
+                        <input type="range" id="slider-water" min="10" max="80" step="5" value="40" style="accent-color: #3b82f6;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Kuyudan gazla beraber gelen su miktarı. Su ağırdır, 170 km boyunca taşımak büyük bir hidrostatik yüktür.
+                        </div>
+                    </div>
+
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-3 border-b border-amber-900 pb-2 mt-6">Tesis Mimarisi (Architecture)</h2>
+                    
+                    <button id="btn-toggle" onclick="toggleSeparation()" class="control-btn w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold shadow-lg border border-slate-500 flex flex-col items-center justify-center gap-1">
+                        <span id="btn-text">GELENEKSEL ÇOK FAZLI AKIŞ (Bypass)</span>
+                        <span class="text-[10px] font-normal text-slate-400" id="btn-subtext">Su ve Gaz 170 km boyunca beraber itiliyor.</span>
+                    </button>
+                </div>
+
+                <!-- Telemetry Dashboard -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col gap-3 flex-1">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">Performans Metrikleri</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Karşı Basınç">Boru Hattı Karşı Basıncı</div>
+                            <div id="val-bp" class="text-2xl font-bold text-red-400">0 psi</div>
+                            <div class="text-[9px] text-slate-500">Kuyuyu boğan yük</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Gaz Debisi">Net Gaz Üretimi</div>
+                            <div id="val-gas" class="text-2xl font-bold text-sky-400">0 MMscfd</div>
+                            <div class="text-[9px] text-slate-500">Satışa giden net gaz</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="mt-auto bg-slate-800 border border-slate-500 p-4 rounded-lg text-sm text-slate-300 font-semibold leading-relaxed text-center transition-all h-[120px] flex items-center justify-center">
+                        Bekleniyor...
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                <div class="flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[600px]">
+                    <canvas id="subseaCanvas" width="900" height="550" class="max-w-full h-auto rounded-lg"></canvas>
+                    
+                    <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                        <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Denizaltı Sistemi (2200m Derinlik)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_5px_#38bdf8]"></span> Gaz (Hafif ve Hızlı)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-blue-600 shadow-[0_0_5px_#2563eb]"></span> Formasyon Suyu (Ağır)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-4 h-4 bg-[#f59e0b] border border-slate-400 rounded-sm"></span> Subsea Separator Modülü</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-4 bg-[#ef4444] rounded-full flex items-center justify-center border border-slate-400"><div class="w-1.5 h-1.5 bg-black rounded-full"></div></span> Su Enjeksiyon Pompası</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('subseaCanvas');
+        const ctx = canvas.getContext('2d');
+        const slWater = document.getElementById('slider-water');
+
+        let isSeparationActive = false;
+        let waterCut = 40; // %
+        let baseReservoirFlow = 150; // Arbitrary base units
+        
+        let backPressure = 0;
+        let gasProduction = 0;
+        
+        let particles = [];
+        let animationTime = 0;
+
+        // Geometry Constants
+        const W = canvas.width;
+        const H = canvas.height;
+        const WELL_X = 100;
+        const SEP_X = 350;
+        const SEP_Y = 250;
+        const DISP_WELL_X = 550;
+
+        // Paths
+        const pathWellToSep = [ {x: WELL_X, y: 450}, {x: WELL_X, y: SEP_Y}, {x: SEP_X - 60, y: SEP_Y} ];
+        const pathGasExport = [ {x: SEP_X + 60, y: SEP_Y - 20}, {x: SEP_X + 150, y: SEP_Y - 20}, {x: SEP_X + 200, y: SEP_Y - 50}, {x: W + 20, y: SEP_Y - 150} ]; // Rises towards shore
+        const pathWaterDisposal = [ {x: SEP_X + 60, y: SEP_Y + 20}, {x: DISP_WELL_X, y: SEP_Y + 20}, {x: DISP_WELL_X, y: 500} ];
+        const pathBypass = [ {x: SEP_X - 60, y: SEP_Y}, {x: SEP_X, y: SEP_Y - 80}, {x: SEP_X + 150, y: SEP_Y - 80}, {x: SEP_X + 200, y: SEP_Y - 50}, {x: W + 20, y: SEP_Y - 150} ]; // Over the separator
+
+        class FluidParticle {
+            constructor() { this.reset(); this.progress = Math.random(); }
+            
+            reset() {
+                this.progress = 0;
+                this.isWater = Math.random() * 100 < waterCut;
+                this.active = true;
+                this.path = pathWellToSep;
+                this.stage = 'inlet'; // inlet, processing, export, disposal, bypass
+                
+                // Speed is influenced by backpressure. Higher backpressure = slower
+                let bpFactor = Math.max(0.1, 1 - (backPressure / 4000));
+                this.baseSpeed = (0.005 + Math.random() * 0.002) * bpFactor; 
+            }
+
+            update() {
+                if (!this.active) return;
+                
+                // Acceleration dynamics based on phase
+                let currentSpeed = this.baseSpeed;
+                if (this.stage === 'export' && !isSeparationActive) currentSpeed *= 0.5; // Very slow multiphase flow
+                if (this.stage === 'export' && isSeparationActive) currentSpeed *= 3.0; // Fast pure gas
+                if (this.stage === 'disposal') currentSpeed *= 2.0; // Pumped water
+
+                this.progress += currentSpeed;
+
+                if (this.progress >= 1.0) {
+                    this.progress = 0;
+                    
+                    if (this.stage === 'inlet') {
+                        if (isSeparationActive) {
+                            this.stage = 'processing';
+                        } else {
+                            this.stage = 'bypass';
+                            this.path = pathBypass;
+                        }
+                    } else if (this.stage === 'processing') {
+                        if (this.isWater) {
+                            this.stage = 'disposal';
+                            this.path = pathWaterDisposal;
+                        } else {
+                            this.stage = 'export';
+                            this.path = pathGasExport;
+                        }
+                    } else {
+                        // End of line
+                        this.reset();
+                    }
+                }
+            }
+
+            getPos() {
+                if (this.stage === 'processing') {
+                    // Custom movement inside separator
+                    let ratio = this.progress;
+                    let x = (SEP_X - 50) + ratio * 100;
+                    let y = SEP_Y;
+                    if (this.isWater) {
+                        y += ratio * 20; // Sinks to bottom
+                    } else {
+                        y -= ratio * 20; // Rises to top
+                    }
+                    return { x, y: y + (Math.random() - 0.5) * 5 };
+                }
+
+                // Normal Path following
+                let totalSegs = this.path.length - 1;
+                let scaled = this.progress * totalSegs;
+                let idx = Math.floor(scaled);
+                if (idx >= totalSegs) idx = totalSegs - 1;
+                let t = scaled - idx;
+                
+                let p1 = this.path[idx];
+                let p2 = this.path[idx+1];
+                
+                let x = p1.x + (p2.x - p1.x) * t;
+                let y = p1.y + (p2.y - p1.y) * t;
+                
+                // Add tube width offset
+                x += (Math.random() - 0.5) * 6;
+                y += (Math.random() - 0.5) * 6;
+
+                return { x, y };
+            }
+
+            draw() {
+                if (!this.active) return;
+                let pos = this.getPos();
+                
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 3, 0, Math.PI * 2);
+                
+                if (this.isWater) {
+                    ctx.fillStyle = '#2563eb'; // Deep Blue
+                    ctx.shadowBlur = 2; ctx.shadowColor = '#1d4ed8';
+                } else {
+                    ctx.fillStyle = '#38bdf8'; // Sky Blue
+                    ctx.shadowBlur = 5; ctx.shadowColor = '#0ea5e9';
+                }
+                
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function toggleSeparation() {
+            isSeparationActive = !isSeparationActive;
+            let btn = document.getElementById('btn-toggle');
+            
+            if (isSeparationActive) {
+                btn.className = "control-btn w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(16,185,129,0.5)] border border-emerald-400 flex flex-col items-center justify-center gap-1";
+                document.getElementById('btn-text').innerText = "SUBSEA SEPARATOR AKTİF";
+                document.getElementById('btn-subtext').innerText = "Su yan kuyuya basılıyor, sadece Gaz karaya gidiyor.";
+                document.getElementById('btn-subtext').className = "text-[10px] font-normal text-emerald-100";
+            } else {
+                btn.className = "control-btn w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold shadow-lg border border-slate-500 flex flex-col items-center justify-center gap-1";
+                document.getElementById('btn-text').innerText = "GELENEKSEL ÇOK FAZLI AKIŞ (Bypass)";
+                document.getElementById('btn-subtext').innerText = "Su ve Gaz 170 km boyunca beraber itiliyor.";
+                document.getElementById('btn-subtext').className = "text-[10px] font-normal text-slate-400";
+            }
+
+            // Reset particles to clear the lines smoothly
+            particles.forEach(p => p.reset());
+            updatePhysics();
+        }
+
+        function updatePhysics() {
+            waterCut = parseFloat(slWater.value);
+            document.getElementById('val-water').innerText = waterCut + "%";
+
+            // Simplified Nodal Analysis / Friction calculations
+            let fluidDensity = (waterCut * 62.4 + (100 - waterCut) * 5) / 100; // Fake mixture density
+            
+            let statusBox = document.getElementById('status-box');
+            let bpEl = document.getElementById('val-bp');
+            let gasEl = document.getElementById('val-gas');
+
+            if (!isSeparationActive) {
+                // Multiphase flow -> High friction, high hydrostatic head
+                backPressure = 1000 + (waterCut * 25); 
+                gasProduction = baseReservoirFlow * (1 - (backPressure / 4000)) * ((100 - waterCut)/100);
+                
+                bpEl.className = "text-2xl font-bold text-red-500 animate-pulse";
+                gasEl.className = "text-2xl font-bold text-amber-500";
+                
+                statusBox.className = "mt-auto bg-red-900/40 border border-red-500 p-4 rounded-lg text-sm text-red-200 font-semibold leading-relaxed text-center transition-all shadow-lg";
+                statusBox.innerHTML = `⚠️ YÜKSEK SÜRTÜNME & HİDROSTATİK YÜK <br><span class='text-xs font-normal mt-1 block'>Ağır su-gaz karışımı (Multiphase) 170 km boyunca ittirildiği için boruda devasa bir karşı basınç (Backpressure) oluştu. Kuyu boğuluyor, üretim düştü.</span>`;
+            } else {
+                // Separated gas flow -> Low friction, pure gas
+                backPressure = 400 + (waterCut * 2); // Mostly constant low pressure
+                gasProduction = baseReservoirFlow * 1.5 * ((100 - waterCut)/100); // Higher multiplier due to low BP
+                
+                bpEl.className = "text-2xl font-bold text-emerald-400";
+                gasEl.className = "text-2xl font-bold text-sky-400";
+
+                statusBox.className = "mt-auto bg-emerald-900/40 border border-emerald-500 p-4 rounded-lg text-sm text-emerald-200 font-semibold leading-relaxed text-center transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)]";
+                statusBox.innerHTML = `✅ MAKSİMUM OPTİMİZASYON <br><span class='text-xs font-normal mt-1 block'>Ağır formasyon suyu kuyu başında ayrıştırılıp atık kuyusuna basılıyor. Sadece kuru gaz 170 km uzağa fırlatılıyor. Sürtünme bitti, gaz üretimi tavan yaptı!</span>`;
+            }
+
+            bpEl.innerText = Math.floor(backPressure) + " psi";
+            gasEl.innerText = Math.floor(gasProduction) + " MMscfd";
+            
+            // Sync particle speeds
+            particles.forEach(p => {
+                let bpFactor = Math.max(0.1, 1 - (backPressure / 4000));
+                p.baseSpeed = (0.005 + Math.random() * 0.002) * bpFactor; 
+            });
+        }
+
+        for(let i=0; i<300; i++) particles.push(new FluidParticle());
+
+        function drawBackground() {
+            ctx.clearRect(0, 0, W, H);
+            
+            // Deep sea background
+            let bgGrad = ctx.createLinearGradient(0,0, 0, H);
+            bgGrad.addColorStop(0, '#020617'); // Pitch black
+            bgGrad.addColorStop(1, '#0f172a'); // Very dark blue
+            ctx.fillStyle = bgGrad; ctx.fillRect(0,0, W, H);
+
+            // Seabed
+            ctx.fillStyle = '#1e293b'; 
+            ctx.beginPath(); 
+            ctx.moveTo(0, 350); 
+            ctx.lineTo(W, 350); 
+            ctx.lineTo(W, H); 
+            ctx.lineTo(0, H); 
+            ctx.fill();
+            
+            // Subsurface formation
+            ctx.fillStyle = '#451a03'; ctx.fillRect(0, 400, W, H-400); // Rock
+            ctx.fillStyle = '#713f12'; ctx.fillRect(0, 480, 200, H-480); // Reservoir
+            ctx.fillStyle = '#1e3a8a'; ctx.fillRect(450, 450, 200, H-450); // Disposal Aquifer
+        }
+
+        function drawPath(pArray, color, width, dashed=false) {
+            ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            if (dashed) ctx.setLineDash([8, 8]);
+            ctx.beginPath();
+            ctx.moveTo(pArray[0].x, pArray[0].y);
+            for(let i=1; i<pArray.length; i++) ctx.lineTo(pArray[i].x, pArray[i].y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawHardware() {
+            // Pipes (Outer metal)
+            drawPath(pathWellToSep, '#475569', 16);
+            drawPath(pathGasExport, '#475569', 16);
+            drawPath(pathWaterDisposal, '#475569', 12);
+            drawPath(pathBypass, '#475569', 16);
+
+            // Pipes (Inner void)
+            drawPath(pathWellToSep, '#0f172a', 8);
+            drawPath(pathGasExport, '#0f172a', 8);
+            drawPath(pathWaterDisposal, '#0f172a', 6);
+            drawPath(pathBypass, '#0f172a', 8);
+
+            // Active path highlighting
+            if (!isSeparationActive) {
+                drawPath(pathBypass, 'rgba(255,255,255,0.1)', 8);
+            } else {
+                drawPath(pathGasExport, 'rgba(56, 189, 248, 0.2)', 8);
+                drawPath(pathWaterDisposal, 'rgba(37, 99, 235, 0.2)', 6);
+            }
+
+            // Production Wellhead
+            ctx.fillStyle = '#64748b'; ctx.fillRect(WELL_X - 20, 440, 40, 40);
+            ctx.fillStyle = '#10b981'; ctx.fillRect(WELL_X - 15, 410, 30, 30); // Tree
+            ctx.fillStyle = '#fff'; ctx.font="10px Arial font-bold"; ctx.textAlign="center"; ctx.fillText("PROD WELL", WELL_X, 400);
+
+            // Subsea Separator
+            ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.roundRect(SEP_X - 70, SEP_Y - 40, 140, 80, 20); ctx.fill();
+            ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.roundRect(SEP_X - 65, SEP_Y - 35, 130, 70, 15); ctx.fill();
+            // Liquid level in separator if active
+            if (isSeparationActive) {
+                ctx.fillStyle = 'rgba(37, 99, 235, 0.6)';
+                ctx.beginPath(); ctx.roundRect(SEP_X - 65, SEP_Y + 5, 130, 30, {bl: 15, br: 15}); ctx.fill();
+                ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+                ctx.beginPath(); ctx.roundRect(SEP_X - 65, SEP_Y - 35, 130, 40, {tl: 15, tr: 15}); ctx.fill();
+            }
+            ctx.fillStyle = '#fff'; ctx.fillText("SUBSEA SEPARATOR", SEP_X, SEP_Y - 45);
+
+            // Subsea Water Injection Pump
+            ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(DISP_WELL_X, SEP_Y + 20, 15, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(DISP_WELL_X, SEP_Y + 20, 6, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fff'; ctx.fillText("WIP PUMP", DISP_WELL_X + 40, SEP_Y + 25);
+            // Spin animation for pump if active
+            if (isSeparationActive) {
+                ctx.save(); ctx.translate(DISP_WELL_X, SEP_Y + 20); ctx.rotate(animationTime * 10);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-6,0); ctx.lineTo(6,0); ctx.moveTo(0,-6); ctx.lineTo(0,6); ctx.stroke();
+                ctx.restore();
+            }
+
+            // Disposal Wellhead
+            ctx.fillStyle = '#64748b'; ctx.fillRect(DISP_WELL_X - 15, 480, 30, 20);
+            ctx.fillStyle = '#3b82f6'; ctx.fillRect(DISP_WELL_X - 10, 460, 20, 20);
+            ctx.fillStyle = '#fff'; ctx.fillText("DISPOSAL", DISP_WELL_X, 450);
+
+            // Export Direction text
+            ctx.fillStyle = '#94a3b8'; ctx.font="12px Arial";
+            ctx.fillText("170 km To Shore \u2192", W - 80, SEP_Y - 160);
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            
+            drawBackground();
+            drawHardware();
+
+            // Draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        slWater.addEventListener('input', updatePhysics);
+        updatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

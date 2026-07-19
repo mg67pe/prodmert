@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transient Slugging & Slug Catcher Sizing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Flow Assurance: Transient Slugging & Facility Trip</h1>
+            <p class="text-slate-400 text-sm">Terrain-Induced Slugging, Riser Dynamics & Finger-Type Slug Catcher Sizing</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-sky-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Pipeline Dynamics</h2>
+                    
+                    <div class="slider-label"><span>Gas Flow Rate (Q)</span> <span id="val-q" class="font-mono text-white">100 MMscfd</span></div>
+                    <input type="range" id="slider-q" min="20" max="300" step="10" value="100" style="accent-color: #38bdf8;">
+                    
+                    <div class="text-[10px] text-slate-400 mt-[-10px] mb-4">Low flow rates cannot sweep liquids up the steep continental shelf riser, causing severe terrain slugging.</div>
+
+                    <button onclick="forceSlug()" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg mt-2 shadow-[0_0_15px_rgba(6,182,212,0.5)] border border-cyan-400 transition-all active:scale-95">
+                        🌊 FORCE SEVERE SLUG
+                    </button>
+                    <div class="text-[10px] text-slate-400 mt-1 text-center">Manually trigger a massive liquid sweep.</div>
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-amber-900 shadow-xl h-fit mt-2">
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-900 pb-2">Onshore Facility</h2>
+                    
+                    <div class="slider-label"><span>Slug Catcher Capacity</span> <span id="val-cap" class="font-mono text-amber-300">5000 bbl</span></div>
+                    <input type="range" id="slider-cap" min="2000" max="15000" step="500" value="5000" style="accent-color: #f59e0b;">
+                    
+                    <div class="text-[10px] text-slate-400 mt-[-10px]">Finger-type slug catcher volume. Must be large enough to catch the biggest liquid slug without overflowing.</div>
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas & Sonuçlar -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-blue-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Base Liquid Holdup</div>
+                        <div id="kpi-holdup" class="text-2xl font-bold text-blue-400">0 bbl</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-cyan-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Incoming Slug Size</div>
+                        <div id="kpi-slug" class="text-2xl font-bold text-cyan-400">0 bbl</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Catcher Level</div>
+                        <div id="kpi-level" class="text-2xl font-bold text-sky-400">0%</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center" id="kpi-status-box">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Facility Status</div>
+                        <div id="kpi-status" class="text-xl font-bold text-emerald-400 mt-1">NORMAL</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[450px]">
+                    <canvas id="slugCanvas" width="900" height="400" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10">
+                        <div class="flex items-center gap-2 mb-2"><span class="w-4 h-4 bg-[#1e293b] border border-slate-500"></span> Gas Flow Path</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-4 h-4 bg-blue-600 border border-blue-400"></span> Liquid Holdup (Pooling)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-4 h-4 bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></span> Massive Liquid Slug</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-4 border-2 border-amber-500 bg-amber-500/20"></span> Finger-Type Slug Catcher</div>
+                    </div>
+                </div>
+
+                <!-- Insight Box -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Analyzing Flow Regime...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('slugCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slQ = document.getElementById('slider-q');
+        const slCap = document.getElementById('slider-cap');
+
+        // Physics State
+        let holdupVolume = 0; 
+        let activeSlug = null; 
+        let catcherVolume = 0; 
+        let isTripped = false;
+        let flowRegime = "Stratified";
+        let criticalRate = 180; // MMscfd required to lift liquids up the riser
+
+        function forceSlug() {
+            if(isTripped) {
+                isTripped = false;
+                catcherVolume = 0;
+            }
+            holdupVolume = 8000; // Instantly create a massive pool of liquid
+        }
+
+        function updatePhysics() {
+            let Q = parseFloat(slQ.value);
+            let Cap = parseFloat(slCap.value);
+
+            document.getElementById('val-q').innerText = Q + " MMscfd";
+            document.getElementById('val-cap').innerText = Cap + " bbl";
+
+            if (isTripped) return; 
+
+            // 1. Holdup accumulation at the riser base (Dip)
+            if (Q < criticalRate) {
+                holdupVolume += (criticalRate - Q) * 0.1; // Accumulation rate
+                flowRegime = "Terrain Slugging";
+            } else {
+                if (holdupVolume > 0) holdupVolume -= 15; // Sweep away holdup
+                if (holdupVolume < 0) holdupVolume = 0;
+                flowRegime = "Annular / Stratified (Stable)";
+            }
+
+            // 2. Slug Generation (When holdup grows too large, gas pushes it all at once)
+            if (holdupVolume > 4000 && !activeSlug) {
+                activeSlug = {
+                    volume: holdupVolume,
+                    pos: 0 
+                };
+                holdupVolume = 0; 
+            }
+
+            // 3. Slug Movement
+            if (activeSlug) {
+                let slugVelocity = 0.008 + (Q * 0.0001); // Speed of the bullet
+                activeSlug.pos += slugVelocity;
+
+                if (activeSlug.pos >= 1.0) {
+                    // Slug hits the facility
+                    catcherVolume += activeSlug.volume;
+                    document.getElementById('kpi-slug').innerText = Math.round(activeSlug.volume) + " bbl";
+                    activeSlug = null; 
+                }
+            } else {
+                document.getElementById('kpi-slug').innerText = "0 bbl";
+            }
+
+            // 4. Slug Catcher Drain (Liquids processing)
+            catcherVolume -= 20; 
+            if (catcherVolume < 0) catcherVolume = 0;
+
+            // 5. Check Trip Condition (Overflow)
+            let levelPercent = (catcherVolume / Cap) * 100;
+            if (levelPercent >= 100) {
+                isTripped = true;
+                levelPercent = 100;
+            }
+
+            // Update KPI Dashboards
+            document.getElementById('kpi-holdup').innerText = Math.round(holdupVolume) + " bbl";
+            document.getElementById('kpi-level').innerText = Math.round(levelPercent) + "%";
+            
+            let statusEl = document.getElementById('kpi-status');
+            let statusBox = document.getElementById('kpi-status-box');
+            let insightBox = document.getElementById('insight-box');
+
+            if (isTripped) {
+                statusEl.innerText = "TRIPPED (LIQUID CARRY-OVER)";
+                statusBox.className = "bg-slate-800 border-t-4 border-red-500 p-4 rounded-lg shadow-lg text-center animate-pulse";
+                statusEl.className = "text-xl font-bold text-red-500 mt-1";
+                
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `🚨 CATASTROPHIC FACILITY TRIP <br>
+                    <span class='text-xs font-normal'>The liquid slug volume exceeded the Finger-Type Slug Catcher capacity. Liquids have carried over into the gas processing train, destroying compressors. Increase Catcher Capacity!</span>`;
+            } else if (flowRegime === "Terrain Slugging") {
+                statusEl.innerText = "SEVERE SLUGGING";
+                statusBox.className = "bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center";
+                statusEl.className = "text-xl font-bold text-amber-400 mt-1";
+
+                insightBox.className = "bg-amber-900/40 border border-amber-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `⚠️ TERRAIN-INDUCED SLUGGING <br>
+                    <span class='text-xs font-normal'>Gas velocity is too low to sweep liquids. Liquids are pooling at the seabed dip. Prepare for a massive liquid surge hitting the onshore facility. (Click FORCE SLUG to see impact)</span>`;
+            } else {
+                statusEl.innerText = "STABLE FLOW";
+                statusBox.className = "bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center";
+                statusEl.className = "text-xl font-bold text-emerald-400 mt-1";
+
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ STABLE CONTINUOUS SWEEP <br>
+                    <span class='text-xs font-normal'>Gas velocity is sufficiently high. Liquids are continuously swept to the onshore facility without accumulating into dangerous slugs.</span>`;
+            }
+
+            // Normal continuous liquid arrival if stable
+            if (!isTripped && !activeSlug && flowRegime !== "Terrain Slugging") {
+                 catcherVolume += 10; 
+            }
+        }
+
+        function drawAnimation() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b'; // Canvas Background
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            
+            // Pipe Coordinates
+            const seabedX = 100; const seabedY = H - 50; 
+            const riserBaseX = 400; const riserBaseY = H - 50; 
+            const onshoreX = 650; const onshoreY = 150; 
+            const facilityX = 850; const facilityY = 150; 
+
+            // Draw Background Topography (Seabed & Continental Shelf)
+            ctx.beginPath();
+            ctx.moveTo(0, H); ctx.lineTo(riserBaseX, H); ctx.lineTo(onshoreX, onshoreY + 30);
+            ctx.lineTo(W, onshoreY + 30); ctx.lineTo(W, H);
+            ctx.fillStyle = '#0f172a'; ctx.fill();
+
+            // Draw Outer Pipeline Wall
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 18;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(seabedX, seabedY); ctx.lineTo(riserBaseX, riserBaseY);
+            ctx.lineTo(onshoreX, onshoreY); ctx.lineTo(facilityX, facilityY);
+            ctx.stroke();
+
+            // Draw Inner Pipe Void
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(seabedX, seabedY); ctx.lineTo(riserBaseX, riserBaseY);
+            ctx.lineTo(onshoreX, onshoreY); ctx.lineTo(facilityX, facilityY);
+            ctx.stroke();
+
+            // *** NEW: DYNAMIC GAS FLOW ANIMATION ***
+            let Q = parseFloat(slQ.value);
+            let gasSpeed = Q * 0.05; // Speed multiplier based on flow rate
+            
+            ctx.strokeStyle = 'rgba(125, 211, 252, 0.4)'; // Light blueish/white gas streaks
+            ctx.lineWidth = 6;
+            ctx.setLineDash([15, 25]); // Create dashed lines to simulate flow
+            ctx.lineDashOffset = -(Date.now() * gasSpeed * 0.01) % 40; // Animate movement
+            
+            ctx.beginPath();
+            ctx.moveTo(seabedX, seabedY); 
+            ctx.lineTo(riserBaseX, riserBaseY);
+            ctx.lineTo(onshoreX, onshoreY); 
+            ctx.lineTo(facilityX, facilityY);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset dash for other drawings
+
+            // Liquid Holdup (Pooling at the dip)
+            if (holdupVolume > 0) {
+                let poolLength = Math.min(200, holdupVolume / 15);
+                ctx.strokeStyle = 'rgba(37, 99, 235, 0.9)'; // Solid Dark Blue
+                ctx.lineWidth = 10;
+                ctx.beginPath();
+                ctx.moveTo(riserBaseX - poolLength, riserBaseY);
+                ctx.lineTo(riserBaseX, riserBaseY);
+                // Creep up the slope slightly
+                ctx.lineTo(riserBaseX + (poolLength * 0.2), riserBaseY - (poolLength * 0.2 * ((riserBaseY - onshoreY) / (onshoreX - riserBaseX))));
+                ctx.stroke();
+            }
+
+            // Massive Slug (The Liquid Bullet)
+            if (activeSlug) {
+                let slugStart = activeSlug.pos - 0.2; // Length of the slug
+                if (slugStart < 0) slugStart = 0;
+                
+                let sx1 = riserBaseX + slugStart * (onshoreX - riserBaseX);
+                let sy1 = riserBaseY - slugStart * (riserBaseY - onshoreY);
+                
+                let sx2 = riserBaseX + activeSlug.pos * (onshoreX - riserBaseX);
+                let sy2 = riserBaseY - activeSlug.pos * (riserBaseY - onshoreY);
+
+                if (activeSlug.pos > 1.0) {
+                    sx2 = onshoreX + (activeSlug.pos - 1.0) * (facilityX - onshoreX);
+                    sy2 = onshoreY;
+                }
+
+                // Bright cyan thick bullet representing the slug
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#22d3ee';
+                ctx.strokeStyle = '#22d3ee'; 
+                ctx.lineWidth = 14;
+                ctx.beginPath();
+                ctx.moveTo(sx1, sy1);
+                ctx.lineTo(sx2, sy2);
+                ctx.stroke();
+                ctx.shadowBlur = 0; 
+            }
+
+            // Finger-Type Slug Catcher Drawing
+            let cap = parseFloat(slCap.value);
+            let levelPct = (catcherVolume / cap);
+            if (levelPct > 1) levelPct = 1;
+
+            ctx.lineWidth = 4;
+            for (let i = 0; i < 4; i++) {
+                let yOffset = i * 15;
+                
+                // Finger Outer Walls
+                ctx.strokeStyle = '#475569';
+                ctx.beginPath();
+                ctx.moveTo(facilityX, facilityY + yOffset);
+                ctx.lineTo(facilityX + 120, facilityY + 60 + yOffset);
+                ctx.stroke();
+
+                // Finger Liquid Level
+                if (levelPct > 0) {
+                    ctx.strokeStyle = isTripped ? '#ef4444' : '#3b82f6'; // Red if tripped, blue otherwise
+                    ctx.beginPath();
+                    let fillLen = 120 * levelPct;
+                    // Fill from bottom
+                    ctx.moveTo(facilityX + 120 - fillLen, facilityY + 60 + yOffset - (fillLen * 0.5));
+                    ctx.lineTo(facilityX + 120, facilityY + 60 + yOffset);
+                    ctx.stroke();
+                }
+            }
+
+            // Gas Outlet Header
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(facilityX + 20, facilityY - 10);
+            ctx.lineTo(facilityX + 20, facilityY - 50);
+            ctx.lineTo(facilityX + 100, facilityY - 50);
+            ctx.stroke();
+            
+            ctx.fillStyle = '#cbd5e1'; ctx.font = '10px sans-serif'; 
+            ctx.fillText("To Gas Processing", facilityX + 105, facilityY - 47);
+
+            // Warning labels
+            if (holdupVolume > 1000) {
+                ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 12px sans-serif';
+                ctx.fillText("⚠️ Severe Holdup Accumulation", riserBaseX - 100, riserBaseY - 20);
+            }
+
+            updatePhysics();
+            requestAnimationFrame(drawAnimation);
+        }
+
+        // Event Listeners for Reset
+        slQ.addEventListener('input', () => { if(isTripped) { isTripped=false; catcherVolume=0; } });
+        slCap.addEventListener('input', () => { if(isTripped) { isTripped=false; catcherVolume=0; } });
+
+        // Start Loop
+        drawAnimation();
+
+    </script>
+</body>
+</html>

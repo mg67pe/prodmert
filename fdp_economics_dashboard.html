@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FDP Economics & Cash Flow Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #10b981; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-emerald-400 mb-2">FDP Economics & Cash Flow Dashboard</h1>
+            <p class="text-slate-400 text-sm">Offshore Gas Field Development - Net Present Value & Sensitivity Analysis</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-4 border-b border-emerald-900 pb-2">Investment Parameters</h2>
+                    
+                    <div class="slider-label"><span>Well Count (N)</span> <span id="val-wells" class="font-mono text-white">12</span></div>
+                    <input type="range" id="slider-wells" min="4" max="24" step="1" value="12" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label"><span>Gas Price ($/Mscf)</span> <span id="val-price" class="font-mono text-emerald-300">8.00 $</span></div>
+                    <input type="range" id="slider-price" min="4.0" max="15.0" step="0.5" value="8.0" style="accent-color: #10b981;">
+                    
+                    <div class="slider-label"><span>CAPEX per Well (M$)</span> <span id="val-capex" class="font-mono text-red-300">35 M$</span></div>
+                    <input type="range" id="slider-capex" min="20" max="60" step="1" value="35" style="accent-color: #ef4444;">
+                    
+                    <div class="slider-label"><span>Discount Rate (%)</span> <span id="val-discount" class="font-mono text-amber-300">10%</span></div>
+                    <input type="range" id="slider-discount" min="5" max="20" step="1" value="10" style="accent-color: #f59e0b;">
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col gap-2">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase border-b border-slate-600 pb-1 mb-2">Fixed Assumptions</h3>
+                    <ul class="text-[11px] text-slate-400 space-y-2">
+                        <li>• <strong>Facility & Subsea CAPEX:</strong> 750 M$ (Year 0)</li>
+                        <li>• <strong>Fixed OPEX:</strong> 15 M$ + (N * 0.5 M$) / Year</li>
+                        <li>• <strong>Variable OPEX:</strong> 0.30 $ / Mscf</li>
+                        <li>• <strong>Abandonment Cost:</strong> 100 M$ (Year 20)</li>
+                        <li>• <strong>Total Gas EUR Limit:</strong> 850 Bcf</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Sağ Panel -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Total CAPEX</div>
+                        <div id="kpi-capex" class="text-2xl font-bold text-white">0 M$</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">IRR</div>
+                        <div id="kpi-irr" class="text-2xl font-bold text-amber-400">0%</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">NPV @ Discount</div>
+                        <div id="kpi-npv" class="text-2xl font-bold text-emerald-400">0 M$</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Marginal Well Delta NPV</div>
+                        <div id="kpi-delta" class="text-xl font-bold text-purple-400 mt-1">0 M$</div>
+                    </div>
+                </div>
+
+                <!-- Grafik Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[420px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Project Cash Flow Profile</h3>
+                    <canvas id="ecoCanvas" width="900" height="380" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-12 left-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10">
+                        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#10b981] rounded-sm"></span> Annual Net Cash Flow (Positive)</div>
+                        <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#ef4444] rounded-sm"></span> Annual Cash Flow (Negative CAPEX)</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-[3px] bg-[#38bdf8]"></span> Cumulative NPV Profile</div>
+                    </div>
+                </div>
+
+                <!-- Yorum Kutusu (Artık grafiğin dışında, güvende) -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full">
+                    Analyzing Economics...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('ecoCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slWells = document.getElementById('slider-wells');
+        const slPrice = document.getElementById('slider-price');
+        const slCapex = document.getElementById('slider-capex');
+        const slDisc = document.getElementById('slider-discount');
+
+        const PROJECT_YEARS = 20;
+        const EUR_LIMIT = 850; // Maksimum üretilebilir rezerv (Bcf)
+        const BASE_FACILITY_CAPEX = 750; // M$
+        const ABANDONMENT_COST = 100; // M$
+
+        function calculateEconomics(numWells, gasPrice, wellCost, discountRate) {
+            let cashFlows = [];
+            let cumulativeNPV = [];
+            let totalProdBcf = 0;
+            
+            // 0. Yıl: CAPEX
+            let totalCapex = BASE_FACILITY_CAPEX + (numWells * wellCost);
+            cashFlows.push(-totalCapex);
+            cumulativeNPV.push(-totalCapex);
+
+            // Üretim Sınırlandırması (Kuyu sayısı artınca rezerv erken biter)
+            let maxWellCap = 12; 
+            let theoreticalFieldRate = numWells * maxWellCap;
+            let plateauRate = Math.min(120, theoreticalFieldRate); 
+
+            let currentNPV = -totalCapex;
+
+            for (let t = 1; t <= PROJECT_YEARS; t++) {
+                let yearlyProd = 0;
+                
+                if (totalProdBcf < EUR_LIMIT) {
+                    let remainingGas = EUR_LIMIT - totalProdBcf;
+                    let depletionFactor = totalProdBcf / EUR_LIMIT;
+                    
+                    if (depletionFactor < 0.6) {
+                        yearlyProd = Math.min(plateauRate, remainingGas);
+                    } else {
+                        let declineRate = 0.15 + (numWells * 0.01);
+                        let declinedRate = plateauRate * Math.pow(1 - declineRate, (t - 6));
+                        yearlyProd = Math.min(declinedRate, remainingGas);
+                    }
+                }
+                
+                totalProdBcf += yearlyProd;
+
+                // Gelir (1 Bcf = 1,000,000 Mscf)
+                let revenue = yearlyProd * 1000 * gasPrice;
+
+                // OPEX
+                let fixedOpex = 15 + (numWells * 0.5);
+                let varOpex = yearlyProd * 0.3;
+                let opex = fixedOpex + varOpex;
+
+                let netCashFlow = revenue - opex;
+
+                // 20. Yıl Terk Maliyeti
+                if (t === PROJECT_YEARS) {
+                    netCashFlow -= ABANDONMENT_COST;
+                }
+
+                cashFlows.push(netCashFlow);
+
+                // İskontolanmış Nakit Akışı (DCF)
+                let dcf = netCashFlow / Math.pow(1 + discountRate, t);
+                currentNPV += dcf;
+                cumulativeNPV.push(currentNPV);
+            }
+
+            let irr = calculateIRR(cashFlows);
+
+            return {
+                capex: totalCapex,
+                npv: cumulativeNPV[PROJECT_YEARS],
+                irr: irr,
+                cashFlows: cashFlows,
+                cumulativeNPV: cumulativeNPV
+            };
+        }
+
+        function calculateIRR(cashFlows) {
+            let minRate = -0.2;
+            let maxRate = 2.0; // Maksimum %200 arama sınırı (IRR'nin 1000% olmasını engeller)
+            let guess = 0.1;
+            let npvVal = 0;
+            
+            let totalCF = cashFlows.reduce((a,b) => a+b, 0);
+            if (totalCF <= 0) return 0.0;
+            
+            for (let iter = 0; iter < 100; iter++) {
+                guess = (minRate + maxRate) / 2;
+                npvVal = 0;
+                for (let t = 0; t < cashFlows.length; t++) {
+                    npvVal += cashFlows[t] / Math.pow(1 + guess, t);
+                }
+                if (Math.abs(npvVal) < 0.01) break;
+                if (npvVal > 0) minRate = guess;
+                else maxRate = guess;
+            }
+            return (guess * 100).toFixed(1);
+        }
+
+        function drawChart(ecoData) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 65; const padR = 30; const padT = 35; const padB = 45;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            // Y Eksenini Dinamik Ölçeklendirme (Barların Kaybolmasını Engeller)
+            let maxCF = Math.max(...ecoData.cashFlows, 0);
+            let minCF = Math.min(...ecoData.cashFlows, 0);
+            let maxNPV = Math.max(...ecoData.cumulativeNPV, 0);
+            let minNPV = Math.min(...ecoData.cumulativeNPV, 0);
+            
+            let Y_MAX = Math.ceil(Math.max(maxCF, maxNPV) / 500) * 500 + 500;
+            let Y_MIN = Math.floor(Math.min(minCF, minNPV) / 500) * 500 - 500;
+            
+            if (Y_MAX < 1500) Y_MAX = 1500;
+            if (Y_MIN > -1500) Y_MIN = -1500;
+
+            const getX = (t) => padL + (t / PROJECT_YEARS) * chartW;
+            const getY = (val) => padT + chartH - ((val - Y_MIN) / (Y_MAX - Y_MIN)) * chartH;
+            const zeroY = getY(0);
+
+            // Grid Çizimi
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            
+            let step = (Y_MAX - Y_MIN) / 6;
+            for (let yVal = Y_MIN; yVal <= Y_MAX; yVal += step) {
+                let y = getY(yVal);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.fillText(Math.round(yVal) + " M$", padL - 8, y);
+            }
+
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let t = 0; t <= PROJECT_YEARS; t += 2) {
+                let x = getX(t);
+                ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+                ctx.fillText("Yr " + t, x, H - padB + 10);
+            }
+
+            // Sıfır Çizgisi
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(padL, zeroY); ctx.lineTo(W - padR, zeroY); ctx.stroke();
+
+            // 1. Çubuklar (Nakit Akışı)
+            let barWidth = (chartW / PROJECT_YEARS) * 0.5;
+            for (let t = 0; t <= PROJECT_YEARS; t++) {
+                let cf = ecoData.cashFlows[t];
+                let x = getX(t) - barWidth/2;
+                let y = getY(cf);
+                
+                ctx.fillStyle = cf >= 0 ? '#10b981' : '#ef4444';
+                
+                if (cf >= 0) {
+                    ctx.fillRect(x, y, barWidth, zeroY - y);
+                } else {
+                    ctx.fillRect(x, zeroY, barWidth, y - zeroY);
+                }
+            }
+
+            // 2. Çizgi (Kümülatif NPV)
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            for (let t = 0; t <= PROJECT_YEARS; t++) {
+                let x = getX(t);
+                let y = getY(ecoData.cumulativeNPV[t]);
+                if (t === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            // Çizgi üzerindeki noktalar
+            ctx.fillStyle = '#38bdf8';
+            for (let t = 0; t <= PROJECT_YEARS; t++) {
+                let x = getX(t); let y = getY(ecoData.cumulativeNPV[t]);
+                ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function updateSimulation() {
+            let wells = parseInt(slWells.value);
+            let price = parseFloat(slPrice.value);
+            let capex = parseFloat(slCapex.value);
+            let disc = parseFloat(slDisc.value) / 100;
+
+            document.getElementById('val-wells').innerText = wells;
+            document.getElementById('val-price').innerText = price.toFixed(2) + " $";
+            document.getElementById('val-capex').innerText = capex + " M$";
+            document.getElementById('val-discount').innerText = (disc*100) + "%";
+
+            let ecoData = calculateEconomics(wells, price, capex, disc);
+            let prevData = calculateEconomics(wells - 1, price, capex, disc);
+            let deltaNPV = ecoData.npv - prevData.npv;
+
+            document.getElementById('kpi-capex').innerText = Math.floor(ecoData.capex) + " M$";
+            document.getElementById('kpi-irr').innerText = ecoData.irr + "%";
+            document.getElementById('kpi-npv').innerText = Math.floor(ecoData.npv).toLocaleString() + " M$";
+            
+            let deltaEl = document.getElementById('kpi-delta');
+            if (wells > 4) {
+                deltaEl.innerText = (deltaNPV > 0 ? "+" : "") + Math.floor(deltaNPV) + " M$";
+                deltaEl.className = "text-xl font-bold mt-1 " + (deltaNPV < 12 ? "text-red-400 font-bold" : "text-purple-400");
+            } else {
+                deltaEl.innerText = "N/A";
+                deltaEl.className = "text-xl font-bold mt-1 text-slate-500";
+            }
+
+            // Durum Yorumları
+            let insightBox = document.getElementById('insight-box');
+            if (ecoData.npv < 0) {
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-red-200";
+                insightBox.innerHTML = `🚨 PROJECT UNECONOMIC (NPV < 0) <br><span class='text-xs font-normal'>High drilling costs or low gas price makes the project unfeasible at this discount rate.</span>`;
+            } else if (wells > 4 && deltaNPV < 12) {
+                insightBox.className = "bg-amber-900/40 border border-amber-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-amber-200";
+                insightBox.innerHTML = `⚠️ ECONOMIC LIMIT REACHED (Diminishing Returns) <br><span class='text-xs font-normal'>Adding well ${wells} only yields ${Math.floor(deltaNPV)} M$ incremental NPV. Optimize the development plan at ${wells-1} wells or lower.</span>`;
+            } else {
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-emerald-200";
+                insightBox.innerHTML = `✅ VIABLE FIELD DEVELOPMENT PLAN (IRR: ${ecoData.irr}%) <br><span class='text-xs font-normal'>The incremental gain of adding well ${wells} is above the target economic limit (>12 M$). Development is optimized.</span>`;
+            }
+
+            drawChart(ecoData);
+        }
+
+        slWells.addEventListener('input', updateSimulation);
+        slPrice.addEventListener('input', updateSimulation);
+        slCapex.addEventListener('input', updateSimulation);
+        slDisc.addEventListener('input', updateSimulation);
+
+        setTimeout(updateSimulation, 100);
+
+    </script>
+</body>
+</html>

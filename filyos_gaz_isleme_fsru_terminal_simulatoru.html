@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filyos Gaz İşleme & FSRU Terminal Simülatörü</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { background-color:#0f172a; color:#f8fafc; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; overflow-x:hidden; }
+canvas { background-color:#1e293b; border-radius:0.5rem; border:1px solid #334155; box-shadow:inset 0 0 40px rgba(0,0,0,0.9); }
+.mode-btn { transition:all .2s; border-left:4px solid transparent; }
+.mode-btn.active { background-color:#1e293b; border-left-color:#38bdf8; color:#38bdf8; font-weight:bold; box-shadow:inset 0 0 15px rgba(0,0,0,.3); }
+.mode-btn:hover:not(.active){ background-color:#334155; }
+.slider-label{ display:flex; justify-content:space-between; font-size:.875rem; margin-bottom:.25rem; color:#cbd5e1; font-weight:600; }
+input[type=range]{ accent-color:#3b82f6; width:100%; margin-bottom:1rem; cursor:pointer; }
+</style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+<div class="max-w-[1400px] w-full">
+<header class="mb-6 text-center border-b border-slate-700 pb-4">
+<h1 class="text-3xl font-bold text-sky-400 mb-2">Filyos Gaz İşleme Tesisi & FSRU/LNG Terminal Simülatörü</h1>
+<p class="text-slate-400 text-sm">Sakarya Gaz Sahası Karadan İşleme Zinciri vs. LNG İthalat Terminali — Enerji Arz Güvenliği Perspektifi</p>
+</header>
+
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+<div class="xl:col-span-4 flex flex-col gap-4">
+
+<div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+<h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">1. Terminal / Kaynak Tipi</h2>
+<div class="flex flex-col gap-2 mb-4">
+<button onclick="setMode('filyos')" id="btn-filyos" class="mode-btn active text-left px-3 py-3 rounded text-sm text-slate-300">🛢️ Filyos Kara İşleme Tesisi <span class="block text-[10px] font-normal text-slate-500">Sakarya Gaz Sahası — deniz altından karaya</span></button>
+<button onclick="setMode('fsru')" id="btn-fsru" class="mode-btn text-left px-3 py-3 rounded text-sm text-slate-300">🚢 FSRU / LNG İthalat Terminali <span class="block text-[10px] font-normal text-slate-500">Yüzer depolama & gazlaştırma — temsili</span></button>
+</div>
+
+<h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">2. Akış Parametreleri</h2>
+<div class="slider-label text-sky-400"><span id="slider-label-text">Günlük Debi (MMSCM/gün)</span> <span id="val-q" class="font-mono">5</span></div>
+<input type="range" id="slider-q" min="1" max="10" step="0.5" value="5">
+
+<button onclick="startSim()" id="action-btn" class="w-full mt-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition transform active:scale-95 border border-emerald-400">
+▶ AKIŞI BAŞLAT
+</button>
+</div>
+
+<div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner grid grid-cols-2 gap-3">
+<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+<div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Giriş Basıncı</div>
+<div id="val-pin" class="text-xl font-bold text-sky-400">—</div>
+</div>
+<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+<div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Çıkış Basıncı (Şebeke)</div>
+<div id="val-pout" class="text-xl font-bold text-emerald-400">—</div>
+</div>
+<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+<div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" id="val3-label">Su İçeriği (ppmv)</div>
+<div id="val-3" class="text-lg font-bold text-amber-300">—</div>
+</div>
+<div class="bg-slate-800 border border-slate-600 p-3 rounded-lg text-center">
+<div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Kapasite Kullanımı</div>
+<div id="val-cap" class="text-lg font-bold text-white">0%</div>
+</div>
+</div>
+
+<div id="status-box" class="bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all">
+SYSTEM IDLE
+</div>
+
+<div id="facts-box" class="bg-slate-900/70 border border-slate-700 p-3 rounded-xl text-[10px] text-slate-500 leading-relaxed">
+</div>
+</div>
+
+<div class="xl:col-span-8 flex flex-col gap-4">
+<div class="flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden" style="flex:1.3;">
+<canvas id="processCanvas" width="900" height="380" class="max-w-full h-auto rounded-lg"></canvas>
+</div>
+
+<div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-bold text-slate-400 uppercase tracking-widest" id="chart-title">Su İçeriği — Proses Aşamasına Göre</span>
+<span class="text-[10px] text-slate-500" id="chart-sub">Kurutma ünitesi öncesi/sonrası şebeke spesifikasyonu karşılaştırması</span>
+</div>
+<canvas id="paramCanvas" width="900" height="180" class="w-full h-auto rounded-lg"></canvas>
+</div>
+</div>
+</div>
+
+<div class="mt-4 text-[11px] text-slate-500 text-center leading-relaxed">
+Filyos: Sakarya Gaz Sahası, Zonguldak/Filyos açıklarında ~170 km uzaklıkta ve ~2.200 m su derinliğinde üretim yapıyor; gaz deniz tabanı üretim sistemi ve boru hattıyla karaya taşınıyor, slug catcher ve kurutma (dehidrasyon) ünitelerinden geçirilerek BOTAŞ Ana Ölçüm İstasyonu üzerinden ulusal şebekeye veriliyor. Faz-1 kapasitesi 10 milyon m³/gün.<br>
+FSRU: LNG, kriyojenik sıcaklıkta (-162°C) gemiyle taşınır, yüzer/kıyı tesisinde depolanır, pompalarla basınçlandırılıp buharlaştırıcıdan geçirilerek şebeke sıcaklık/basıncına getirilir ve sevkiyat ölçüm istasyonundan ulusal şebekeye verilir. (Bu moddaki sayısal değerler temsilidir, belirli bir tesise ait değildir.)
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById('processCanvas');
+const ctx = canvas.getContext('2d');
+const paramCanvas = document.getElementById('paramCanvas');
+const pCtx = paramCanvas.getContext('2d');
+const sliderQ = document.getElementById('slider-q');
+const actionBtn = document.getElementById('action-btn');
+const statusBox = document.getElementById('status-box');
+const factsBox = document.getElementById('facts-box');
+
+let mode = 'filyos';
+let isRunning = false;
+let progress = 0; // 0-100 animation clock
+
+const RES_TOP = 40, RES_BOT = canvas.height - 50;
+
+// ---------------- MODE DEFINITIONS ----------------
+const modes = {
+  filyos: {
+    label: 'Filyos Kara İşleme Tesisi',
+    sliderLabel: 'Günlük Debi (MMSCM/gün)',
+    sliderMax: 10, // real Phase-1 capacity ceiling
+    capacity: 10,
+    stages: [
+      { key:'well',   label:'Deniz Altı Kuyu Başı', sub:'~2.200 m su derinliği', x:60,  icon:'wellhead' },
+      { key:'pipe',   label:'170 km Deniz Altı Hattı', sub:'16" çelik boru', x:200, icon:'pipe' },
+      { key:'slug',   label:'Slug Catcher', sub:'Sıvı kütle tutucu', x:340, icon:'vessel' },
+      { key:'sep',    label:'Ayırıcı', sub:'Serbest su/kondensat', x:470, icon:'vessel' },
+      { key:'teg',    label:'Kurutma Ünitesi', sub:'TEG dehidrasyon', x:610, icon:'teg' },
+      { key:'meter',  label:'BOTAŞ Ana Ölçüm İst.', sub:'Custody transfer', x:750, icon:'meter' },
+      { key:'grid',   label:'Ulusal Şebeke', sub:'2,6M+ hane', x:860, icon:'grid' }
+    ],
+    pIn: () => 180 + Math.random()*10, // illustrative wellhead/pipeline arrival pressure, bar
+    pOut: 72, // illustrative BOTAŞ delivery pressure, bar
+    param3Label: 'Su İçeriği (ppmv)',
+    param3In: 900,   // illustrative wet-gas water content before dehydration
+    param3Out: 45,   // illustrative dry-gas spec after TEG (<50 ppmv typical pipeline spec)
+    param3Unit: 'ppmv',
+    chartTitle: 'Su İçeriği — Proses Aşamasına Göre',
+    chartSub: 'Kurutma ünitesi öncesi/sonrası şebeke spesifikasyonu karşılaştırması',
+    chartYLabel: 'Su İçeriği (ppmv)',
+    facts: 'Kaynak veriler: TP-OTC/TPAO kamuya açık açıklamaları — Sakarya Gaz Sahası ~170 km açıkta, ~2.200 m derinlikte (Tuna-1, Ağustos 2020 keşfi); Faz-1 kara tesisi kapasitesi 10 milyon m³/gün; gaz slug catcher + kurutma ünitesinden geçirilip BOTAŞ şebekesine veriliyor. Basınç ve ppm değerleri öğretim amaçlı temsili rakamlardır, TP-OTC\'nin yayımladığı kesin işletme verileri değildir.'
+  },
+  fsru: {
+    label: 'FSRU / LNG İthalat Terminali',
+    sliderLabel: 'Sevkiyat Debisi (MMSCM eşd./gün)',
+    sliderMax: 10,
+    capacity: 10,
+    stages: [
+      { key:'ship',   label:'LNG Gemisi', sub:'-162°C sıvı taşıma', x:60,  icon:'ship' },
+      { key:'arm',    label:'Boşaltma Kolları', sub:'Loading arms', x:200, icon:'pipe' },
+      { key:'tank',   label:'Kriyojenik Depo', sub:'-162°C depolama tankı', x:340, icon:'tank' },
+      { key:'pump',   label:'YB Pompaları', sub:'Basınçlandırma', x:470, icon:'vessel' },
+      { key:'vap',    label:'Gazlaştırıcı', sub:'ORV / SCV vaporizer', x:610, icon:'teg' },
+      { key:'meter',  label:'Sevkiyat Ölçüm İst.', sub:'Custody transfer', x:750, icon:'meter' },
+      { key:'grid',   label:'Ulusal Şebeke', sub:'Kış talep tepe desteği', x:860, icon:'grid' }
+    ],
+    pIn: () => 3 + Math.random()*0.5, // illustrative low-pressure cryogenic storage, bar(g)
+    pOut: 75, // illustrative pipeline send-out pressure, bar
+    param3Label: 'Akışkan Sıcaklığı (°C)',
+    param3In: -162,
+    param3Out: 12,
+    param3Unit: '°C',
+    chartTitle: 'Sıcaklık Profili — Proses Aşamasına Göre',
+    chartSub: 'Kriyojenik LNG\'den şebeke sıcaklığına ısınma eğrisi (vaporizer etkisi)',
+    chartYLabel: 'Sıcaklık (°C)',
+    facts: 'Bu moddaki sayısal değerler (basınç, sıcaklık, kapasite) belirli bir Türkiye FSRU tesisine ait resmi veriler değildir; tipik/temsili FSRU çalışma aralıklarını göstermek amacıyla kullanılmıştır. Gerçek tesis verileri için ilgili işletmecinin (BOTAŞ, EgeGaz vb.) yayınlarına bakılmalıdır.'
+  }
+};
+
+function curData() { return modes[mode]; }
+
+// ---------------- UI WIRING ----------------
+function setMode(m) {
+  if (isRunning) return;
+  mode = m;
+  document.getElementById('btn-filyos').classList.toggle('active', m==='filyos');
+  document.getElementById('btn-fsru').classList.toggle('active', m==='fsru');
+  document.getElementById('slider-label-text').innerText = curData().sliderLabel;
+  document.getElementById('val3-label').innerText = curData().param3Label;
+  document.getElementById('chart-title').innerText = curData().chartTitle;
+  document.getElementById('chart-sub').innerText = curData().chartSub;
+  factsBox.innerText = curData().facts;
+  resetSim();
+}
+
+function resetSim() {
+  isRunning = false;
+  progress = 0;
+  particles = [];
+  spawnAccumulator = 0;
+  lastFrameTime = null;
+  actionBtn.innerText = '▶ AKIŞI BAŞLAT';
+  statusBox.innerHTML = 'SYSTEM IDLE';
+  statusBox.className = 'bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all';
+  updateStats(0);
+  drawScene(0);
+  drawParamChart(0);
+}
+
+function startSim() {
+  if (isRunning) { resetSim(); }
+  else {
+    isRunning = true;
+    actionBtn.innerText = '🔄 SIFIRLA';
+    lastFrameTime = null;
+    requestAnimationFrame(animate);
+  }
+}
+
+sliderQ.addEventListener('input', () => { document.getElementById('val-q').innerText = parseFloat(sliderQ.value).toFixed(1); });
+
+// ---------------- PARTICLE FLOW ----------------
+let particles = [];
+let spawnAccumulator = 0;
+function spawnParticles(step) {
+  if (!isRunning) return;
+  const q = parseFloat(sliderQ.value);
+  spawnAccumulator += (q/3) * step;
+  const spawnCount = Math.floor(spawnAccumulator);
+  spawnAccumulator -= spawnCount;
+  for (let i=0;i<spawnCount;i++) {
+    particles.push({ x: 20, y: RES_TOP + (RES_BOT-RES_TOP)/2 + (Math.random()-0.5)*40, stageIdx:0, t:0 });
+  }
+  // Drop the OLDEST (least-traveled, i.e. most recently spawned) excess particles
+  // from the tail so the ones nearest the exit are never the ones cut off.
+  if (particles.length > 90) particles.length = 90;
+}
+
+function updatePhysics(dtMs) {
+  if (!isRunning) return;
+  // Normalize to a 60fps-equivalent step so motion stays smooth regardless of
+  // actual frame rate (avoids visible stutter on throttled/variable-refresh browsers).
+  const step = Math.min(3, dtMs / 16.67);
+  progress = Math.min(100, progress + 0.4 * step);
+  spawnParticles(step);
+  const stages = curData().stages;
+  const speed = (2.2 + parseFloat(sliderQ.value)*0.25) * step;
+  particles.forEach(p => { p.x += speed; });
+  particles = particles.filter(p => p.x < stages[stages.length-1].x + 40);
+
+  if (progress >= 100 && particles.length < 5) {
+    statusBox.innerHTML = '✅ SÜREKLİ REJİM (STEADY STATE) <br><span class="text-xs font-normal">Akış, hedef debi ve spesifikasyonlarda kararlı hale geldi.</span>';
+    statusBox.className = 'bg-emerald-900/60 border border-emerald-500 p-4 rounded-xl text-emerald-200 text-sm font-semibold transition-all';
+    isRunning = false;
+    actionBtn.innerText = '🔄 SIFIRLA';
+  } else {
+    const d = curData();
+    statusBox.innerHTML = (mode==='filyos'
+      ? '🛢️ İŞLENİYOR <br><span class="text-xs font-normal">Islak gaz slug catcher ve kurutma ünitesinden geçerek şebeke spesine getiriliyor.</span>'
+      : '🚢 GAZLAŞTIRILIYOR <br><span class="text-xs font-normal">Kriyojenik LNG pompalarla basınçlandırılıp vaporizerde ısıtılıyor.</span>');
+    statusBox.className = 'bg-sky-900/60 border border-sky-500 p-4 rounded-xl text-sky-200 text-sm font-semibold transition-all';
+  }
+
+  updateStats(progress/100);
+}
+
+function updateStats(frac) {
+  const d = curData();
+  const q = parseFloat(sliderQ.value);
+  document.getElementById('val-pin').innerText = (typeof d.pIn === 'function' ? d.pIn() : d.pIn).toFixed(0) + ' bar';
+  document.getElementById('val-pout').innerText = d.pOut.toFixed(0) + ' bar';
+  const p3 = d.param3In + (d.param3Out - d.param3In) * Math.min(1, frac*1.3);
+  document.getElementById('val-3').innerText = p3.toFixed(0) + ' ' + d.param3Unit;
+  document.getElementById('val-cap').innerText = ((q/d.capacity)*100).toFixed(0) + '%';
+}
+
+// ---------------- STAGE ICON DRAWING ----------------
+function drawStageIcon(stage, cx, cy) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = '#94a3b8'; ctx.fillStyle = '#475569'; ctx.lineWidth = 1.5;
+  switch (stage.icon) {
+    case 'wellhead':
+      ctx.fillStyle = '#38bdf8'; ctx.fillRect(-5,-16,10,8);
+      ctx.fillStyle = '#64748b'; ctx.fillRect(-11,-8,22,6);
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(-2,-2,4,14);
+      ctx.fillStyle = '#334155'; ctx.fillRect(-13,12,26,7);
+      break;
+    case 'ship':
+      ctx.fillStyle = '#0ea5e9';
+      ctx.beginPath(); ctx.moveTo(-22,10); ctx.lineTo(22,10); ctx.lineTo(16,20); ctx.lineTo(-16,20); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-10,-8,20,18);
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(-3,-2,5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(6,-2,5,0,Math.PI*2); ctx.fill();
+      break;
+    case 'pipe':
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(-30,0); ctx.lineTo(30,0); ctx.stroke();
+      break;
+    case 'vessel':
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath(); ctx.moveTo(-14,-16); ctx.lineTo(14,-16); ctx.lineTo(14,14); ctx.quadraticCurveTo(0,24,-14,14); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#334155'; ctx.stroke();
+      break;
+    case 'tank':
+      ctx.fillStyle = '#475569';
+      ctx.beginPath(); ctx.arc(0,-10,16,Math.PI,0); ctx.fill();
+      ctx.fillRect(-16,-10,32,26);
+      ctx.beginPath(); ctx.arc(0,16,16,0,Math.PI); ctx.fill();
+      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.strokeRect(-16,-10,32,26);
+      break;
+    case 'teg':
+      ctx.fillStyle = '#64748b'; ctx.fillRect(-10,-18,20,36);
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2;
+      for (let i=-12;i<16;i+=6){ ctx.beginPath(); ctx.moveTo(-10,i); ctx.lineTo(10,i+3); ctx.stroke(); }
+      break;
+    case 'meter':
+      ctx.fillStyle = '#334155'; ctx.fillRect(-12,-12,24,24);
+      ctx.strokeStyle = '#10b981'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,8,0.6*Math.PI,2.4*Math.PI); ctx.stroke();
+      break;
+    case 'grid':
+      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0,-18); ctx.lineTo(0,18); ctx.moveTo(-14,-8); ctx.lineTo(14,-8); ctx.moveTo(-14,4); ctx.lineTo(14,4); ctx.stroke();
+      break;
+  }
+  ctx.restore();
+}
+
+function particleColor(stageProgressFrac) {
+  // interpolate color: wet/raw -> processed/dry, per mode
+  if (mode === 'filyos') {
+    // teal (wet, w/ liquid) -> bright cyan (dry gas) -> emerald (to grid)
+    if (stageProgressFrac < 0.5) return `rgba(14,165,233,${0.55+stageProgressFrac*0.3})`;
+    return `rgba(16,185,129,0.85)`;
+  } else {
+    // cryogenic blue-white -> warm orange -> emerald
+    if (stageProgressFrac < 0.55) return `rgba(56,189,248,0.9)`;
+    if (stageProgressFrac < 0.75) return `rgba(251,191,36,0.85)`;
+    return `rgba(16,185,129,0.85)`;
+  }
+}
+
+function drawScene() {
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const d = curData();
+  const stages = d.stages;
+  const midY = RES_TOP + (RES_BOT-RES_TOP)/2;
+
+  // backdrop label
+  ctx.fillStyle = '#1e293b'; ctx.fillRect(0,0,canvas.width, RES_TOP-6);
+  ctx.fillStyle = '#64748b'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText(d.label, 12, 22);
+
+  // pipeline backbone
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 10; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(30, midY); ctx.lineTo(canvas.width-20, midY); ctx.stroke();
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(30, midY); ctx.lineTo(canvas.width-20, midY); ctx.stroke();
+
+  // particles
+  const lastX = stages[stages.length-1].x;
+  particles.forEach(p => {
+    const frac = Math.min(1, p.x/lastX);
+    ctx.fillStyle = particleColor(frac);
+    ctx.beginPath();
+    ctx.arc(p.x, midY + Math.sin(p.x*0.05)* (mode==='filyos' && frac<0.4 ? 6:2), mode==='fsru'&&frac<0.5?3.2:2.4, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // stage icons + labels
+  stages.forEach((s, idx) => {
+    drawStageIcon(s, s.x, midY);
+    ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(s.label, s.x, midY+38);
+    ctx.fillStyle = '#64748b'; ctx.font = '9px Segoe UI';
+    ctx.fillText(s.sub, s.x, midY+50);
+  });
+
+  // spec threshold marker near dehydration/vaporizer stage
+  ctx.fillStyle = mode==='filyos' ? '#f59e0b' : '#38bdf8';
+  ctx.font = '10px Segoe UI'; ctx.textAlign='center';
+  const specStage = stages[4];
+  ctx.fillText(mode==='filyos' ? '⚠ Spec: <50 ppmv su' : '⚠ Sevk sıcaklığı: ~+12°C', specStage.x, midY-40);
+}
+
+// ---------------- PARAMETER CHART ----------------
+function drawParamChart(frac) {
+  pCtx.fillStyle = '#0f172a'; pCtx.fillRect(0,0,paramCanvas.width,paramCanvas.height);
+  const d = curData();
+  const padL=60, padR=20, padT=15, padB=28;
+  const plotW = paramCanvas.width-padL-padR, plotH = paramCanvas.height-padT-padB;
+
+  const stageNames = ['Kuyu/Gemi','Hat/Kollar','İlk Ünite','Ayırıcı/Pompa','Kurutma/Vaporizer','Ölçüm','Şebeke'];
+  const n = stageNames.length;
+
+  pCtx.strokeStyle = '#475569'; pCtx.lineWidth=1;
+  pCtx.beginPath(); pCtx.moveTo(padL,padT); pCtx.lineTo(padL,padT+plotH); pCtx.lineTo(padL+plotW,padT+plotH); pCtx.stroke();
+
+  pCtx.fillStyle = '#94a3b8'; pCtx.font='9px Segoe UI'; pCtx.textAlign='center';
+  stageNames.forEach((name,i) => {
+    const x = padL + plotW*i/(n-1);
+    pCtx.fillText(name, x, padT+plotH+14);
+  });
+
+  pCtx.save(); pCtx.translate(14, padT+plotH/2); pCtx.rotate(-Math.PI/2); pCtx.textAlign='center'; pCtx.font='10px Segoe UI'; pCtx.fillStyle='#94a3b8';
+  pCtx.fillText(d.chartYLabel,0,0); pCtx.restore();
+
+  // value range
+  const yMin = Math.min(d.param3In, d.param3Out) - Math.abs(d.param3In-d.param3Out)*0.15;
+  const yMax = Math.max(d.param3In, d.param3Out) + Math.abs(d.param3In-d.param3Out)*0.15;
+  const Y = v => padT+plotH - ((v-yMin)/(yMax-yMin))*plotH;
+
+  // gridlines + labels
+  pCtx.strokeStyle='rgba(71,85,105,0.35)'; pCtx.fillStyle='#64748b'; pCtx.font='9px Segoe UI'; pCtx.textAlign='right';
+  for (let i=0;i<=4;i++){
+    const v = yMin + (yMax-yMin)*i/4;
+    const gy = Y(v);
+    pCtx.beginPath(); pCtx.moveTo(padL,gy); pCtx.lineTo(padL+plotW,gy); pCtx.stroke();
+    pCtx.fillText(v.toFixed(0), padL-6, gy+3);
+  }
+
+  // spec/target line
+  const specVal = d.param3Out;
+  pCtx.strokeStyle = mode==='filyos' ? '#f59e0b' : '#38bdf8';
+  pCtx.setLineDash([4,3]); pCtx.beginPath();
+  pCtx.moveTo(padL, Y(specVal)); pCtx.lineTo(padL+plotW, Y(specVal)); pCtx.stroke(); pCtx.setLineDash([]);
+  pCtx.fillStyle = mode==='filyos' ? '#f59e0b' : '#38bdf8'; pCtx.textAlign='left'; pCtx.font='9px Segoe UI';
+  pCtx.fillText(mode==='filyos' ? 'şebeke spesi' : 'sevk hedefi', padL+4, Y(specVal)-4);
+
+  // decline/rise curve across stages: value stays near "In" until stage 4 (dehydration/vaporizer) then transitions to "Out"
+  const curveVals = stageNames.map((_, i) => {
+    const t = i/(n-1);
+    if (t < 0.55) return d.param3In;
+    const localT = (t-0.55)/0.45;
+    return d.param3In + (d.param3Out-d.param3In) * Math.min(1, localT/0.7);
+  });
+
+  pCtx.strokeStyle = '#38bdf8'; pCtx.lineWidth=2;
+  pCtx.beginPath();
+  curveVals.forEach((v,i) => { const x = padL+plotW*i/(n-1); const y = Y(v); if(i===0) pCtx.moveTo(x,y); else pCtx.lineTo(x,y); });
+  pCtx.stroke();
+
+  // current progress marker along the curve
+  const markT = Math.min(1, frac*1.15);
+  const markStageF = markT*(n-1);
+  const idx0 = Math.floor(markStageF), idx1 = Math.min(n-1, idx0+1);
+  const localFrac = markStageF - idx0;
+  const v0 = curveVals[idx0], v1 = curveVals[idx1];
+  const vMark = v0 + (v1-v0)*localFrac;
+  const xMark = padL + plotW*markStageF/(n-1);
+  pCtx.fillStyle = '#f8fafc';
+  pCtx.beginPath(); pCtx.arc(xMark, Y(vMark), 4, 0, Math.PI*2); pCtx.fill();
+}
+
+// ---------------- ANIMATION LOOP ----------------
+let lastFrameTime = null;
+function animate(now) {
+  if (!isRunning) return;
+  if (lastFrameTime === null) lastFrameTime = now;
+  const dtMs = now - lastFrameTime;
+  lastFrameTime = now;
+  updatePhysics(dtMs);
+  drawScene();
+  drawParamChart(progress/100);
+  requestAnimationFrame(animate);
+}
+
+// ---------------- INIT ----------------
+factsBox.innerText = curData().facts;
+resetSim();
+</script>
+</body>
+</html>

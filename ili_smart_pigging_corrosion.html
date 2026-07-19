@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ILI Smart Pigging & MFL Corrosion Simulator</title>
+    <style>
+        :root {
+            --bg-color: #0b132b;
+            --panel-bg: #1c2541;
+            --text-main: #6fffe9;
+            --text-muted: #8d99ae;
+            --pipe-color: #5bc0be;
+            --alert-red: #ff4d4d;
+            --pig-color: #ff9f1c;
+            --mfl-signal: #39ff14;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border: 2px solid #3a506b;
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            background: #050a15;
+            border-radius: 4px;
+        }
+
+        .control-panel {
+            width: 300px;
+            background-color: var(--panel-bg);
+            border: 2px solid #3a506b;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--text-main);
+        }
+
+        .value-display {
+            font-size: 14px;
+            text-align: right;
+            color: #fff;
+        }
+
+        .btn {
+            background-color: var(--text-main);
+            color: var(--bg-color);
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            background-color: #5bc0be;
+        }
+
+        .btn-stop {
+            background-color: var(--alert-red);
+            color: white;
+        }
+
+        .btn-stop:hover {
+            background-color: #cc0000;
+        }
+
+        .dashboard {
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid var(--text-main);
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-family: monospace;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .alert-box {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: rgba(255, 77, 77, 0.1);
+            border: 1px solid var(--alert-red);
+            color: var(--alert-red);
+            font-size: 12px;
+            font-weight: bold;
+            display: none;
+            text-align: center;
+        }
+
+        .legend {
+            display: flex;
+            gap: 10px;
+            font-size: 11px;
+            color: var(--text-muted);
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .legend span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .color-box {
+            width: 10px;
+            height: 10px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>ILI Smart Pigging (MFL) Simulator</h1>
+        <p>Magnetic Flux Leakage Corrosion Detection | Subsea Pipeline Integrity</p>
+    </div>
+
+    <div class="container">
+        <div class="canvas-container">
+            <!-- 800x500 is aspect ratio. Top 250 pipe, bottom 250 signal graph -->
+            <canvas id="simCanvas" width="800" height="500"></canvas>
+            <div class="legend">
+                <span><div class="color-box" style="background:#5bc0be;"></div> Çelik Boru (Steel Wall)</span>
+                <span><div class="color-box" style="background:#ff9f1c;"></div> MFL Akıllı Pig</span>
+                <span><div class="color-box" style="background:rgba(255,77,77,0.5);"></div> Manyetik Akı (Magnetic Flux)</span>
+                <span><div class="color-box" style="background:#39ff14;"></div> Sensör Sinyali (MFL Log)</span>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="dashboard">
+                <div class="stat-row">
+                    <span>Odometer (Mesafe):</span>
+                    <span class="stat-value" id="distVal">0.00 km</span>
+                </div>
+                <div class="stat-row">
+                    <span>Duvar Kalınlığı (WT):</span>
+                    <span class="stat-value" id="wtVal">100%</span>
+                </div>
+                <div class="stat-row">
+                    <span>MFL Sinyal Genliği:</span>
+                    <span class="stat-value" id="sigVal">0.0 mV</span>
+                </div>
+                <div id="alertBox" class="alert-box">
+                    🚨 KRİTİK METAL KAYBI TESPİT EDİLDİ! <br> Patlama Riski (Burst Risk) Yüksek!
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Boru Yaşı / Korozyon Şiddeti (Years)</label>
+                <input type="range" id="ageSlider" min="1" max="30" value="5">
+                <div class="value-display" id="ageDisplay">5 Yıl (Düşük Korozyon)</div>
+            </div>
+
+            <div class="control-group">
+                <label>Pig İlerleme Hızı (m/s)</label>
+                <input type="range" id="speedSlider" min="0.5" max="5.0" step="0.1" value="2.0">
+                <div class="value-display" id="speedDisplay">2.0 m/s</div>
+            </div>
+
+            <button class="btn" id="launchBtn">Akillı Pig'i Gönder (Launch)</button>
+            <button class="btn btn-stop" id="resetBtn">Sistemi Sıfırla (Reset)</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const ageSlider = document.getElementById('ageSlider');
+        const ageDisplay = document.getElementById('ageDisplay');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const distVal = document.getElementById('distVal');
+        const wtVal = document.getElementById('wtVal');
+        const sigVal = document.getElementById('sigVal');
+        const alertBox = document.getElementById('alertBox');
+        const launchBtn = document.getElementById('launchBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Sim State
+        let isRunning = false;
+        let animationId;
+        let pigX = 50;
+        let pigSpeed = 2.0;
+        let signalHistory = []; // For the bottom chart
+        let anomalies = []; // Pits and metal loss
+        const pipeYTop = 50;
+        const pipeYBot = 200;
+        const pipeWallThickness = 20; // Visual thickness
+        
+        // Generate Anomalies based on age
+        function generateAnomalies() {
+            anomalies = [];
+            const age = parseInt(ageSlider.value);
+            const numAnomalies = Math.floor(Math.random() * (age / 2)) + Math.floor(age / 5) + 1;
+            
+            for(let i=0; i<numAnomalies; i++) {
+                // Randomly place along the 800px width (start after 150px)
+                const xPos = 150 + Math.random() * 600;
+                // Depth depends on age
+                const maxDepth = pipeWallThickness * 0.9; 
+                let depth = (Math.random() * (age / 30) * maxDepth) + 2; 
+                if(depth > maxDepth) depth = maxDepth;
+                
+                const width = 10 + Math.random() * 30; // 10 to 40px wide
+                
+                // Top or bottom wall?
+                const isTop = Math.random() > 0.5;
+
+                anomalies.push({ x: xPos, w: width, d: depth, isTop: isTop });
+            }
+            // Sort by x for signal processing
+            anomalies.sort((a,b) => a.x - b.x);
+        }
+
+        // Draw the Pipeline
+        function drawPipe() {
+            ctx.fillStyle = '#5bc0be'; // Pipe base color
+            
+            // Draw Top Wall Base
+            ctx.fillRect(0, pipeYTop, canvas.width, pipeWallThickness);
+            // Draw Bottom Wall Base
+            ctx.fillRect(0, pipeYBot - pipeWallThickness, canvas.width, pipeWallThickness);
+
+            // Carve out anomalies (Corrosion pits)
+            ctx.fillStyle = '#050a15'; // Background color to "erase" steel
+            anomalies.forEach(ano => {
+                if(ano.isTop) {
+                    // Carve from bottom of top wall upwards
+                    ctx.beginPath();
+                    ctx.ellipse(ano.x + ano.w/2, pipeYTop + pipeWallThickness, ano.w/2, ano.d, 0, Math.PI, 2*Math.PI);
+                    ctx.fill();
+                } else {
+                    // Carve from top of bottom wall downwards
+                    ctx.beginPath();
+                    ctx.ellipse(ano.x + ano.w/2, pipeYBot - pipeWallThickness, ano.w/2, ano.d, 0, 0, Math.PI);
+                    ctx.fill();
+                }
+            });
+
+            // Draw grid for the signal chart (Bottom half: Y=250 to 500)
+            ctx.strokeStyle = '#3a506b';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 375); // Center line for signal
+            ctx.lineTo(canvas.width, 375);
+            ctx.stroke();
+
+            ctx.fillStyle = '#8d99ae';
+            ctx.font = '10px Arial';
+            ctx.fillText("MFL Sensör Sinyali (mV)", 10, 265);
+            ctx.fillText("+ Flux Sızıntısı", 10, 300);
+            ctx.fillText("- Normal WT", 10, 450);
+        }
+
+        // Draw the Smart Pig
+        function drawPig(x) {
+            const pigW = 80;
+            const pigH = (pipeYBot - pipeWallThickness) - (pipeYTop + pipeWallThickness) - 4;
+            const pigY = pipeYTop + pipeWallThickness + 2;
+
+            // Drive Cups (Poliüretan Kaplar)
+            ctx.fillStyle = '#222';
+            ctx.fillRect(x, pigY, 10, pigH);
+            ctx.fillRect(x + pigW - 10, pigY, 10, pigH);
+
+            // Pig Body (Mıknatıslar)
+            ctx.fillStyle = '#ff9f1c';
+            ctx.fillRect(x + 10, pigY + 10, pigW - 20, pigH - 20);
+
+            // Magnetic field lines (Red transparent)
+            ctx.strokeStyle = 'rgba(255, 77, 77, 0.5)';
+            ctx.lineWidth = 2;
+            for(let i=0; i<3; i++) {
+                ctx.beginPath();
+                ctx.arc(x + pigW/2, pigY + pigH/2, 40 + i*10, -Math.PI/2, Math.PI/2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x + pigW/2, pigY + pigH/2, 40 + i*10, Math.PI/2, -Math.PI/2);
+                ctx.stroke();
+            }
+
+            // Sensor Ring (Sensör Halkası - MFL Detectors)
+            ctx.fillStyle = '#6fffe9';
+            ctx.fillRect(x + pigW/2 - 5, pigY, 10, pigH);
+
+            // Odometer wheels at the back
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x - 5, pigY + 10, 8, 0, 2*Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(x - 5, pigY + pigH - 10, 8, 0, 2*Math.PI);
+            ctx.stroke();
+
+            // Labels
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 10px Arial';
+            ctx.fillText("N", x + 15, pigY + pigH/2 + 4);
+            ctx.fillText("S", x + pigW - 22, pigY + pigH/2 + 4);
+        }
+
+        // Draw the MFL Signal Graph
+        function drawSignalGraph() {
+            if(signalHistory.length === 0) return;
+
+            ctx.strokeStyle = '#39ff14'; // Neon Green
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            // Start from where the pig's sensor ring currently is, draw backwards
+            for(let i=0; i<signalHistory.length; i++) {
+                const pt = signalHistory[i];
+                // Y map: base is 375. Signal goes up to 100 max.
+                const plotY = 375 - (pt.sig * 6); 
+                
+                if(i===0) ctx.moveTo(pt.x, plotY);
+                else ctx.lineTo(pt.x, plotY);
+            }
+            ctx.stroke();
+        }
+
+        // Main Simulation Loop
+        function animate() {
+            if (!isRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawPipe();
+
+            // Move pig
+            pigX += pigSpeed;
+            if(pigX > canvas.width) {
+                pigX = 50; 
+                signalHistory = []; // Reset chart on loop
+                generateAnomalies(); // New pipe section
+            }
+
+            drawPig(pigX);
+
+            // Calculate current signal (based on sensor ring position)
+            const sensorX = pigX + 40; // Center of pig
+            let currentSignal = 0; // mV
+            let currentWT = 100; // %
+            let isAlert = false;
+
+            anomalies.forEach(ano => {
+                // If sensor is directly over the anomaly
+                const dist = Math.abs(sensorX - (ano.x + ano.w/2));
+                if(dist < ano.w/2 + 10) {
+                    // Gaussian-like bump for magnetic flux leakage
+                    const intensity = (ano.d / pipeWallThickness); // 0 to 1
+                    currentWT = Math.round(100 - (intensity * 100));
+                    
+                    // Signal formula (visual): leakage spikes near edges of pit, but let's make it a simple spike
+                    currentSignal = (intensity * 20) * Math.cos((dist / (ano.w/2+10)) * Math.PI / 2);
+                    
+                    if(currentWT < 40) isAlert = true; // API 1156 Threshold simulation
+                }
+            });
+
+            // Update UI
+            distVal.innerText = (sensorX * 0.212).toFixed(2) + " km";
+            wtVal.innerText = currentWT + "%";
+            sigVal.innerText = currentSignal.toFixed(1) + " mV";
+
+            // Visual Alert
+            if(isAlert) {
+                wtVal.style.color = 'var(--alert-red)';
+                alertBox.style.display = 'block';
+                sigVal.style.color = 'var(--alert-red)';
+            } else {
+                wtVal.style.color = '#fff';
+                alertBox.style.display = 'none';
+                sigVal.style.color = '#fff';
+            }
+
+            // Record Signal
+            signalHistory.push({x: sensorX, sig: currentSignal});
+            // Keep array clean (only draw what's on screen)
+            if(signalHistory.length > canvas.width) signalHistory.shift();
+
+            drawSignalGraph();
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Controls
+        ageSlider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if(val < 10) ageDisplay.innerText = val + " Yıl (Düşük Korozyon)";
+            else if(val < 20) ageDisplay.innerText = val + " Yıl (Orta Korozyon)";
+            else ageDisplay.innerText = val + " Yıl (Ağır Korozyon!)";
+            if(!isRunning) { generateAnomalies(); drawPipe(); }
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            pigSpeed = parseFloat(e.target.value);
+            speedDisplay.innerText = pigSpeed.toFixed(1) + " m/s";
+        });
+
+        launchBtn.addEventListener('click', () => {
+            if (!isRunning) {
+                if(signalHistory.length === 0) generateAnomalies();
+                isRunning = true;
+                launchBtn.innerText = "Pig Seyir Halinde...";
+                launchBtn.style.backgroundColor = "#8d99ae";
+                animate();
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            isRunning = false;
+            cancelAnimationFrame(animationId);
+            pigX = 50;
+            signalHistory = [];
+            generateAnomalies();
+            
+            // Reset UI
+            launchBtn.innerText = "Akillı Pig'i Gönder (Launch)";
+            launchBtn.style.backgroundColor = "var(--text-main)";
+            distVal.innerText = "0.00 km";
+            wtVal.innerText = "100%";
+            wtVal.style.color = '#fff';
+            sigVal.innerText = "0.0 mV";
+            alertBox.style.display = 'none';
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawPipe();
+            drawPig(pigX);
+        });
+
+        // Initial Draw
+        generateAnomalies();
+        drawPipe();
+        drawPig(pigX);
+    </script>
+</body>
+</html>

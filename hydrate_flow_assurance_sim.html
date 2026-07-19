@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea Flow Assurance & Hydrate Risk Profiler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Subsea Flowline & Hydrate Risk Profiler</h1>
+            <p class="text-slate-400 text-sm">Flow Assurance: Temperature Profile vs. Hydrate Formation Temperature (HFT)</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Wellhead & Flow Parameters</h2>
+                    
+                    <div class="slider-label"><span>Production Rate (Q)</span> <span id="val-q" class="font-mono text-white">100 MMscf/d</span></div>
+                    <input type="range" id="slider-q" min="20" max="250" step="5" value="100" style="accent-color: #3b82f6;">
+                    <div class="text-[10px] text-slate-500 mt-[-15px] mb-3">Higher rates reduce fluid residence time and heat loss.</div>
+
+                    <div class="slider-label"><span>Wellhead Temp (Twh)</span> <span id="val-twh" class="font-mono text-orange-400">160 °F</span></div>
+                    <input type="range" id="slider-twh" min="100" max="220" step="5" value="160" style="accent-color: #f97316;">
+                    
+                    <div class="slider-label"><span>Wellhead Pressure (Pwh)</span> <span id="val-pwh" class="font-mono text-emerald-400">2500 psia</span></div>
+                    <input type="range" id="slider-pwh" min="1000" max="5000" step="100" value="2500" style="accent-color: #10b981;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-900 pb-2">Flow Assurance Mitigation</h2>
+                    
+                    <div class="slider-label"><span>Insulation Level (U-Value)</span> <span id="val-u" class="font-mono text-amber-300">1.5 Btu/hr.ft².°F</span></div>
+                    <input type="range" id="slider-u" min="0.2" max="5.0" step="0.1" value="1.5" style="accent-color: #f59e0b;">
+                    <div class="text-[10px] text-slate-500 mt-[-15px] mb-3">Lower U-value = Better insulation (e.g. Pipe-in-Pipe).</div>
+
+                    <div class="slider-label"><span>MEG Injection Dose</span> <span id="val-meg" class="font-mono text-purple-400">0 wt%</span></div>
+                    <input type="range" id="slider-meg" min="0" max="40" step="1" value="0" style="accent-color: #a855f7;">
+                    <div class="text-[10px] text-slate-500 mt-[-15px]">Thermodynamic inhibitor. Shifts Hydrate curve downwards.</div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase border-b border-slate-600 pb-1 mb-2">Environmental Data</h3>
+                    <ul class="text-xs text-slate-400 space-y-1">
+                        <li>• <strong>Tie-back Distance:</strong> 100 Miles (Offshore to Onshore)</li>
+                        <li>• <strong>Seabed Temperature:</strong> 38 °F (Constant)</li>
+                        <li>• <strong>Gas Specific Gravity:</strong> 0.65</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right Panel: Canvas & Results -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[500px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Temperature vs. Hydrate Profile Along Flowline</h3>
+                    
+                    <canvas id="hydrateCanvas" width="900" height="420" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none">
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[3px] bg-orange-500"></span> Fluid Temperature T(x)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[3px] bg-cyan-400"></span> Hydrate Formation Temp (HFT)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[2px] border-t-2 border-dashed border-blue-500"></span> Seabed Ambient (38 °F)</div>
+                        <div class="flex items-center gap-2"><span class="w-4 h-4 bg-red-500/50 border border-red-500"></span> Hydrate Blockage Risk Zone</div>
+                    </div>
+                </div>
+
+                <!-- Status / Comment Box -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full">
+                    Analyzing Flowline...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('hydrateCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slQ = document.getElementById('slider-q');
+        const slTwh = document.getElementById('slider-twh');
+        const slPwh = document.getElementById('slider-pwh');
+        const slU = document.getElementById('slider-u');
+        const slMeg = document.getElementById('slider-meg');
+
+        const DISTANCE_MILES = 100;
+        const T_SEABED = 38; // °F
+
+        function calculateProfile() {
+            let Q = parseFloat(slQ.value);
+            let Twh = parseFloat(slTwh.value);
+            let Pwh = parseFloat(slPwh.value);
+            let U_val = parseFloat(slU.value);
+            let MEG_wt = parseFloat(slMeg.value);
+
+            document.getElementById('val-q').innerText = Q + " MMscf/d";
+            document.getElementById('val-twh').innerText = Twh + " °F";
+            document.getElementById('val-pwh').innerText = Pwh + " psia";
+            document.getElementById('val-u').innerText = U_val.toFixed(1) + " Btu/hr.ft²";
+            document.getElementById('val-meg').innerText = MEG_wt + " wt%";
+
+            let profileData = [];
+            let hydrateRisk = false;
+            let riskStartMile = -1;
+
+            // Simple Pressure Drop Model: P(x) = Pwh - (friction_factor * Q^2 * x)
+            // Tuned so 100 MMscf/d drops ~1000 psi over 100 miles
+            let pressureDropPerMile = (Math.pow(Q, 1.8) / Math.pow(100, 1.8)) * 10; 
+
+            // Heat Transfer Model: T(x) = T_ambient + (Twh - T_ambient) * exp(-alpha * x)
+            // alpha depends on U-value and inversely on Mass Flow Rate (Q)
+            // Tuned for realistic deepwater gas tie-backs
+            let alpha = (U_val * 0.015) / (Q / 100);
+
+            // Hydrate suppression based on MEG wt%. (Approx: 1 wt% ~ 0.5 to 1.0 F suppression depending on conc.)
+            let megSuppression = MEG_wt * 0.85;
+
+            for (let x = 0; x <= DISTANCE_MILES; x += 1) {
+                // Pressure Profile
+                let P_x = Pwh - (pressureDropPerMile * x);
+                if (P_x < 500) P_x = 500; // prevent negative/unrealistic pressures
+
+                // Temperature Profile (Exponential cooling)
+                let T_x = T_SEABED + (Twh - T_SEABED) * Math.exp(-alpha * x);
+
+                // Hydrate Curve Approximation (T_hyd in °F vs P in psia for ~0.65 SG Gas)
+                // Equation tuned to typical Katz gravity curves
+                let HFT_base = 13.47 * Math.log(P_x) - 20; 
+                let HFT_x = HFT_base - megSuppression;
+
+                profileData.push({ mile: x, temp: T_x, hft: HFT_x, pressure: P_x });
+
+                if (T_x <= HFT_x && !hydrateRisk) {
+                    hydrateRisk = true;
+                    riskStartMile = x;
+                }
+            }
+
+            updateUI(profileData, hydrateRisk, riskStartMile, MEG_wt, U_val);
+            drawChart(profileData);
+        }
+
+        function updateUI(data, hasRisk, riskMile, meg, uVal) {
+            let insightBox = document.getElementById('insight-box');
+            let arrivalTemp = data[data.length - 1].temp.toFixed(1);
+
+            if (hasRisk) {
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-red-200 animate-pulse";
+                insightBox.innerHTML = `🚨 HYDRATE FORMATION RISK DETECTED <br>
+                    <span class='text-xs font-normal'>Fluid temperature drops below Hydrate Formation Temperature (HFT) at <b>Mile ${riskMile}</b>. 
+                    <br>Action required: Inject MEG/Methanol or decrease U-Value (add insulation). Arrival Temp: ${arrivalTemp} °F</span>`;
+            } else {
+                if (meg > 0) {
+                    insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-emerald-200";
+                    insightBox.innerHTML = `✅ FLOWLINE SECURE (WITH INHIBITOR) <br>
+                        <span class='text-xs font-normal'>Hydrate curve successfully suppressed with ${meg}% MEG. Fluid stays above HFT along the entire ${DISTANCE_MILES} miles. Arrival Temp: ${arrivalTemp} °F</span>`;
+                } else if (uVal < 1.0) {
+                    insightBox.className = "bg-blue-900/40 border border-blue-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-blue-200";
+                    insightBox.innerHTML = `✅ FLOWLINE SECURE (THERMAL INSULATION) <br>
+                        <span class='text-xs font-normal'>High-grade insulation (PIP) retains enough heat. Fluid stays above HFT naturally. No chemical injection needed! Arrival Temp: ${arrivalTemp} °F</span>`;
+                } else {
+                    insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-emerald-200";
+                    insightBox.innerHTML = `✅ FLOWLINE SECURE <br>
+                        <span class='text-xs font-normal'>High production rate and current temp/pressure keep the fluid out of the hydrate zone. Arrival Temp: ${arrivalTemp} °F</span>`;
+                }
+            }
+        }
+
+        function drawChart(data) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 60; const padR = 40; const padT = 30; const padB = 40;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            // X-Axis (Distance): 0 to DISTANCE_MILES
+            const getX = (mile) => padL + (mile / DISTANCE_MILES) * chartW;
+
+            // Y-Axis (Temperature °F): 20 to 220
+            const T_MIN = 20; const T_MAX = 220;
+            const getY = (t) => padT + chartH - ((t - T_MIN) / (T_MAX - T_MIN)) * chartH;
+
+            // Draw Grids
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; 
+            
+            // Y-Axis Labels
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (let t = 40; t <= 200; t += 20) {
+                let y = getY(t);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.fillText(t + " °F", padL - 10, y);
+            }
+
+            // X-Axis Labels
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let m = 0; m <= DISTANCE_MILES; m += 10) {
+                let x = getX(m);
+                ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+                ctx.fillText(m, x, H - padB + 10);
+            }
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Subsea Flowline Distance (Miles)", W/2, H - 15);
+
+            // Draw Ambient Seabed Temp (38 F)
+            let yAmbient = getY(T_SEABED);
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(padL, yAmbient); ctx.lineTo(W - padR, yAmbient); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#3b82f6'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillText("Seabed Temp (38 °F)", W - padR - 120, yAmbient - 5);
+
+            // Hydrate Risk Zone Area (Fill where Fluid Temp < HFT)
+            ctx.beginPath();
+            let riskStarted = false;
+            for (let i = 0; i < data.length; i++) {
+                let pt = data[i];
+                if (pt.temp <= pt.hft) {
+                    if (!riskStarted) {
+                        ctx.moveTo(getX(pt.mile), getY(pt.hft));
+                        riskStarted = true;
+                    } else {
+                        ctx.lineTo(getX(pt.mile), getY(pt.hft));
+                    }
+                } else if (riskStarted) {
+                    // Close the polygon
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (data[j].temp > data[j].hft) break;
+                        ctx.lineTo(getX(data[j].mile), getY(data[j].temp));
+                    }
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)'; ctx.fill();
+                    riskStarted = false;
+                    ctx.beginPath();
+                }
+            }
+            if (riskStarted) {
+                for (let j = data.length - 1; j >= 0; j--) {
+                    if (data[j].temp > data[j].hft) break;
+                    ctx.lineTo(getX(data[j].mile), getY(data[j].temp));
+                }
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)'; ctx.fill();
+            }
+
+            // Draw HFT Curve (Cyan)
+            ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 3;
+            ctx.beginPath();
+            data.forEach((pt, i) => {
+                let x = getX(pt.mile); let y = getY(pt.hft);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Draw Fluid Temperature Curve (Orange)
+            ctx.strokeStyle = '#f97316'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            data.forEach((pt, i) => {
+                let x = getX(pt.mile); let y = getY(pt.temp);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+        }
+
+        // Add Listeners
+        slQ.addEventListener('input', calculateProfile);
+        slTwh.addEventListener('input', calculateProfile);
+        slPwh.addEventListener('input', calculateProfile);
+        slU.addEventListener('input', calculateProfile);
+        slMeg.addEventListener('input', calculateProfile);
+
+        // Initial Draw
+        setTimeout(calculateProfile, 100);
+
+    </script>
+</body>
+</html>

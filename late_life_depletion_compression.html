@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Late-Life Field Depletion & Subsea Compression</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #020617; border-radius: 0.5rem; border: 1px solid #1e293b; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); }
+        .mode-btn { transition: all 0.2s ease; border-left: 4px solid transparent; }
+        .mode-btn.active { background-color: #1e293b; border-left-color: #38bdf8; color: #38bdf8; font-weight: bold; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .mode-btn:hover:not(.active) { background-color: #334155; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #ef4444; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Late-Life Field Depletion: Subsea Boosting vs. Onshore Vacuum</h1>
+            <p class="text-slate-400 text-sm">Long Tie-Back Flow Assurance, Gas Expansion Friction, and Recovery Factor (RF) Maximization</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Telemetry -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-red-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-red-400 uppercase tracking-widest mb-3 border-b border-red-900 pb-2">Time (Reservoir Depletion)</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-slate-300"><span>Reservoir Pressure (P<sub>R</sub>)</span> <span id="val-pr" class="font-mono text-white">2000 psi</span></div>
+                        <input type="range" id="slider-pr" min="200" max="2000" step="50" value="2000" style="accent-color: #ef4444;" dir="rtl">
+                        <div class="flex justify-between text-[10px] text-slate-500 -mt-2">
+                            <span>Late Life (200 psi)</span>
+                            <span>Early Life (2000 psi)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit flex flex-col gap-2">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">FDP Upgrade Strategy</h2>
+                    
+                    <button onclick="setMode('natural')" id="btn-natural" class="mode-btn active text-left px-3 py-3 rounded text-sm text-slate-300">
+                        1. Natural Flow (No Compression)
+                        <div class="text-[10px] font-normal text-slate-500 mt-1">CAPEX: $0. Relies solely on reservoir energy.</div>
+                    </button>
+                    
+                    <button onclick="setMode('onshore')" id="btn-onshore" class="mode-btn text-left px-3 py-3 rounded text-sm text-slate-300">
+                        2. Onshore Vacuum Compression
+                        <div class="text-[10px] font-normal text-slate-500 mt-1">CAPEX: ~$200M. Sucks gas from shore. Gas expands in 170km pipe, increasing friction.</div>
+                    </button>
+
+                    <button onclick="setMode('subsea')" id="btn-subsea" class="mode-btn text-left px-3 py-3 rounded text-sm text-slate-300">
+                        3. Subsea Wet Gas Compression
+                        <div class="text-[10px] font-normal text-slate-500 mt-1">CAPEX: ~$800M. Pushes dense gas from the seabed. Overcomes 170km friction easily.</div>
+                    </button>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex-1 flex flex-col gap-3">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-widest border-b border-slate-700 pb-2">Economic & Physical Output</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Gas Flow Rate">Flow Rate (Q)</div>
+                            <div id="val-q" class="text-2xl font-bold text-sky-400">0</div>
+                            <div class="text-[10px] text-slate-500">MMscfd</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Estimated Ultimate Recovery">Recovery Factor</div>
+                            <div id="val-rf" class="text-2xl font-bold text-emerald-400">0%</div>
+                            <div class="text-[10px] text-slate-500">of IGIP</div>
+                        </div>
+                    </div>
+
+                    <div id="insight-box" class="mt-auto bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-sm text-slate-300 font-semibold leading-relaxed transition-all h-[120px] flex items-center justify-center text-center">
+                        Initializing reservoir model...
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="xl:col-span-8 flex justify-center bg-[#020617] rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[650px]">
+                <canvas id="compCanvas" width="900" height="630" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">System Architecture (170 km Tie-Back)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded bg-red-500"></span> Depleting Reservoir</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 bg-slate-400"></span> 170-km Multiphase Export Line</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_5px_#10b981]"></span> Active Compressor Module</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-sky-300">
+                        Particle Density represents Gas Density/Pressure.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('compCanvas');
+        const ctx = canvas.getContext('2d');
+        const slPr = document.getElementById('slider-pr');
+
+        // Physics State
+        let mode = 'natural'; // natural, onshore, subsea
+        let Pr = 2000;
+        let flowRate = 0;
+        let recoveryFactor = 60.0; // Base RF
+        
+        let animationTime = 0;
+        let particles = [];
+
+        // Architecture coordinates
+        const CX_WELL = 100;
+        const CY_SEABED = 480;
+        const CY_RES = 580;
+        
+        const CX_SUBSEA_COMP = 180;
+        
+        const CX_ONSHORE = 750;
+        const CY_ONSHORE = 150;
+
+        // Path for particles
+        const pipePath = [
+            {x: CX_WELL, y: CY_RES}, // Reservoir
+            {x: CX_WELL, y: CY_SEABED}, // Wellhead
+            {x: CX_SUBSEA_COMP, y: CY_SEABED}, // Subsea Comp Node
+            {x: 400, y: CY_SEABED}, // Seabed travel
+            {x: 650, y: CY_ONSHORE}, // Continental shelf rise
+            {x: CX_ONSHORE, y: CY_ONSHORE}, // Onshore Comp Node
+            {x: 850, y: CY_ONSHORE} // Processing facility
+        ];
+
+        class GasParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                this.active = true;
+                this.progress = randomize ? Math.random() : 0;
+                // Base speed is tied to Flow Rate.
+                this.baseSpeed = 0.001 + (flowRate * 0.00002);
+            }
+            update() {
+                if (!this.active || flowRate <= 0) return;
+                
+                // Speed variations based on compression mode (Gas expansion simulation)
+                let currentSpeed = this.baseSpeed;
+                let pos = this.getPosObj();
+
+                if (mode === 'onshore' && pos.x > CX_SUBSEA_COMP && pos.x < CX_ONSHORE) {
+                    // Gas expands due to onshore vacuum, velocity increases dramatically but density drops
+                    currentSpeed *= 2.0; 
+                } else if (mode === 'subsea' && pos.x > CX_SUBSEA_COMP) {
+                    // Dense gas pushed by subsea comp, moves steady and firm
+                    currentSpeed *= 1.2;
+                }
+
+                this.progress += currentSpeed;
+                if (this.progress >= 1.0) this.reset();
+            }
+            getPosObj() {
+                let totalSegs = pipePath.length - 1;
+                let scaled = this.progress * totalSegs;
+                let idx = Math.floor(scaled);
+                if (idx >= totalSegs) idx = totalSegs - 1;
+                let t = scaled - idx;
+                
+                let p1 = pipePath[idx];
+                let p2 = pipePath[idx+1];
+                
+                let x = p1.x + (p2.x - p1.x) * t;
+                let y = p1.y + (p2.y - p1.y) * t;
+                return {x, y};
+            }
+            draw() {
+                if (!this.active || flowRate <= 0) return;
+                let pos = this.getPosObj();
+                
+                // Simulate Gas Density (Opacity/Color)
+                let opacity = 0.8;
+                let color = '#38bdf8'; // Normal dense gas
+
+                if (mode === 'onshore' && pos.x > CX_SUBSEA_COMP) {
+                    // Vacuum creates expanded, thin gas
+                    opacity = 0.4;
+                    color = '#bae6fd'; 
+                } else if (mode === 'subsea' && pos.x > CX_SUBSEA_COMP) {
+                    // Pushed dense gas
+                    opacity = 0.9;
+                    color = '#0284c7'; 
+                }
+
+                ctx.beginPath();
+                // Add turbulent wobble
+                let wobble = (Math.random() - 0.5) * 6;
+                ctx.arc(pos.x + wobble, pos.y + wobble, 2.5, 0, Math.PI*2);
+                ctx.fillStyle = color;
+                ctx.globalAlpha = opacity;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        // Initialize particles
+        for(let i=0; i<300; i++) particles.push(new GasParticle());
+
+        function setMode(newMode) {
+            mode = newMode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            updatePhysics();
+        }
+
+        function updatePhysics() {
+            Pr = parseInt(slPr.value);
+            document.getElementById('val-pr').innerText = Pr + " psi";
+
+            // Simplified Nodal Analysis for 170km Tie-back
+            // Friction dominates.
+            let abandonmentPressure = 0;
+            
+            if (mode === 'natural') {
+                // Facility needs 800 psi. 170km pipe needs at least ~400 psi driving force.
+                // Dies at 1200 psi.
+                abandonmentPressure = 1200;
+            } else if (mode === 'onshore') {
+                // Sucks at 200 psi. But 170km of low-pressure gas has HUGE friction (expansion).
+                // Dies at ~700 psi.
+                abandonmentPressure = 700;
+            } else if (mode === 'subsea') {
+                // Sucks at 200 psi right at the wellhead! Pushes high density gas 170km.
+                // Dies at ~300 psi.
+                abandonmentPressure = 300;
+            }
+
+            // Calculate Flow Rate (Q)
+            if (Pr <= abandonmentPressure) {
+                flowRate = 0; // Well is dead
+            } else {
+                // Pseudo-steady state flow calculation approximation
+                flowRate = Math.pow((Pr - abandonmentPressure), 1.2) * 0.05;
+                if (mode === 'subsea') flowRate *= 1.2; // Extra boost efficiency
+            }
+
+            // Calculate Recovery Factor
+            // RF = (P_initial - P_abandonment) / P_initial
+            let RF = ((4000 - abandonmentPressure) / 4000) * 100;
+            if (RF > 95) RF = 95;
+
+            // Update Dashboards
+            document.getElementById('val-q').innerText = Math.floor(flowRate);
+            document.getElementById('val-rf').innerText = RF.toFixed(1) + "%";
+
+            let insight = document.getElementById('insight-box');
+            let qEl = document.getElementById('val-q');
+
+            if (flowRate <= 0) {
+                qEl.className = "text-2xl font-bold text-red-500 animate-pulse";
+                insight.className = "mt-auto bg-red-900/50 border border-red-500 p-4 rounded-xl text-sm text-red-200 font-semibold leading-relaxed transition-all h-[120px] flex items-center justify-center text-center";
+                insight.innerHTML = "🚨 WELL DEAD (ECONOMIC LIMIT REACHED)<br><span class='text-xs font-normal mt-1 block'>Reservoir pressure (" + Pr + " psi) cannot overcome the 170km pipeline friction and hydrostatic head. Abandonment pressure (" + abandonmentPressure + " psi) hit.</span>";
+            } else {
+                qEl.className = "text-2xl font-bold text-sky-400";
+                if (mode === 'natural') {
+                    insight.className = "mt-auto bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-sm text-slate-300 font-semibold leading-relaxed transition-all h-[120px] flex items-center justify-center text-center";
+                    insight.innerHTML = "NORMAL DEPLETION<br><span class='text-xs font-normal mt-1 block'>High reservoir pressure is sufficient to drive the gas 170km to shore naturally. Will die early.</span>";
+                } else if (mode === 'onshore') {
+                    insight.className = "mt-auto bg-amber-900/40 border border-amber-500 p-4 rounded-xl text-sm text-amber-200 font-semibold leading-relaxed transition-all h-[120px] flex items-center justify-center text-center";
+                    insight.innerHTML = "⚠️ FRICTION DOMINATED (ONSHORE VACUUM)<br><span class='text-xs font-normal mt-1 block'>Gas expands massively over 170km due to low pressure. High velocity creates massive friction loss, choking the well prematurely.</span>";
+                } else if (mode === 'subsea') {
+                    insight.className = "mt-auto bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm text-emerald-200 font-semibold leading-relaxed transition-all h-[120px] flex items-center justify-center text-center shadow-[0_0_15px_rgba(16,185,129,0.2)]";
+                    insight.innerHTML = "✅ OPTIMIZED FLOW (SUBSEA BOOSTING)<br><span class='text-xs font-normal mt-1 block'>Compressor near the wellhead pushes dense gas. Overcomes 170km friction easily. Maximizes ultimate recovery (RF) despite high CAPEX.</span>";
+                }
+            }
+
+            // Sync particle speeds
+            particles.forEach(p => p.baseSpeed = 0.001 + (flowRate * 0.000015));
+        }
+
+        function drawArchitecture() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Scenery (Sea and Land)
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, CY_ONSHORE + 50); // Sky
+            
+            let seaGrad = ctx.createLinearGradient(0, CY_ONSHORE + 50, 0, canvas.height);
+            seaGrad.addColorStop(0, '#0369a1'); seaGrad.addColorStop(1, '#082f49');
+            ctx.fillStyle = seaGrad; ctx.fillRect(0, CY_ONSHORE + 50, 600, canvas.height); // Sea
+            
+            ctx.fillStyle = '#1e293b'; 
+            ctx.beginPath(); ctx.moveTo(0, canvas.height); ctx.lineTo(600, canvas.height); ctx.lineTo(700, CY_ONSHORE + 50); ctx.lineTo(canvas.width, CY_ONSHORE + 50); ctx.lineTo(canvas.width, canvas.height); ctx.fill(); // Seabed / Land
+
+            // Reservoir
+            ctx.fillStyle = '#7f1d1d';
+            ctx.beginPath(); ctx.ellipse(CX_WELL, CY_RES, 80, 30, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#fca5a5'; ctx.font="11px Arial"; ctx.textAlign="center"; ctx.fillText("Reservoir", CX_WELL, CY_RES + 5);
+
+            // Pipeline Path
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 14; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(pipePath[0].x, pipePath[0].y);
+            for(let i=1; i<pipePath.length; i++) ctx.lineTo(pipePath[i].x, pipePath[i].y);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(pipePath[0].x, pipePath[0].y);
+            for(let i=1; i<pipePath.length; i++) ctx.lineTo(pipePath[i].x, pipePath[i].y);
+            ctx.stroke();
+
+            // Wellhead / Tree
+            ctx.fillStyle = '#64748b'; ctx.fillRect(CX_WELL - 20, CY_SEABED - 30, 40, 30);
+            ctx.fillStyle = '#fff'; ctx.fillText("Tree", CX_WELL, CY_SEABED - 40);
+
+            // Subsea Compressor Station
+            ctx.fillStyle = '#334155'; ctx.fillRect(CX_SUBSEA_COMP - 30, CY_SEABED - 40, 60, 40);
+            if (mode === 'subsea' && flowRate > 0) {
+                // Active Glowing Compressor
+                ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(CX_SUBSEA_COMP, CY_SEABED - 20, 15, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 15; ctx.shadowColor = '#10b981'; ctx.fill(); ctx.shadowBlur = 0;
+                // Spinning icon
+                ctx.save(); ctx.translate(CX_SUBSEA_COMP, CY_SEABED - 20); ctx.rotate(animationTime * 10);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.moveTo(0,-10); ctx.lineTo(0,10); ctx.stroke(); ctx.restore();
+            } else {
+                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(CX_SUBSEA_COMP, CY_SEABED - 20, 15, 0, Math.PI*2); ctx.fill();
+                if (mode === 'subsea') {
+                    ctx.fillStyle = '#ef4444'; ctx.fillText("OFF", CX_SUBSEA_COMP, CY_SEABED - 50);
+                } else {
+                    ctx.fillStyle = '#94a3b8'; ctx.font="9px Arial"; ctx.fillText("Bypassed", CX_SUBSEA_COMP, CY_SEABED - 50);
+                }
+            }
+
+            // Onshore Compressor Station
+            ctx.fillStyle = '#334155'; ctx.fillRect(CX_ONSHORE - 40, CY_ONSHORE - 60, 80, 60);
+            if (mode === 'onshore' && flowRate > 0) {
+                // Active Glowing Compressor
+                ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(CX_ONSHORE, CY_ONSHORE - 30, 20, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 15; ctx.shadowColor = '#10b981'; ctx.fill(); ctx.shadowBlur = 0;
+                // Spinning icon
+                ctx.save(); ctx.translate(CX_ONSHORE, CY_ONSHORE - 30); ctx.rotate(animationTime * 10);
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-15,0); ctx.lineTo(15,0); ctx.moveTo(0,-15); ctx.lineTo(0,15); ctx.stroke(); ctx.restore();
+            } else {
+                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(CX_ONSHORE, CY_ONSHORE - 30, 20, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.fillStyle = '#fff'; ctx.font="12px Arial font-bold"; ctx.fillText("Onshore Plant", CX_ONSHORE, CY_ONSHORE - 70);
+
+            // Flow Direction Indicator
+            if (flowRate > 0) {
+                ctx.fillStyle = '#cbd5e1'; ctx.font = "11px Arial";
+                ctx.fillText("Flow \u2192", 400, CY_SEABED - 20);
+            }
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            
+            drawArchitecture();
+
+            // Draw particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        slPr.addEventListener('input', updatePhysics);
+        updatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

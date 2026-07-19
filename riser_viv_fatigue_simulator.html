@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riser VIV & Fatigue Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #020617; border-radius: 0.5rem; border: 1px solid #1e293b; box-shadow: inset 0 0 50px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        .control-btn { transition: all 0.2s ease; }
+        .control-btn:active:not(:disabled) { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Vortex-Induced Vibration (VIV) & Riser Fatigue</h1>
+            <p class="text-slate-400 text-sm">Deepwater Hydrodynamics, Frequency Lock-in, and Helical Strake Suppression</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Telemetry -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2">Hydrodynamic Controls</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-blue-400"><span>Ocean Current Velocity ($U$)</span> <span id="val-current" class="font-mono">0.5 m/s</span></div>
+                        <input type="range" id="slider-current" min="0.1" max="2.5" step="0.1" value="0.5">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            High current velocity increases vortex shedding frequency. If it matches the riser's natural frequency, disaster strikes.
+                        </div>
+                    </div>
+
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-3 border-b border-amber-900 pb-2 mt-6">Mechanical Mitigation</h2>
+                    
+                    <button id="btn-strake" onclick="toggleStrakes()" class="control-btn w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold shadow-lg border border-slate-500 flex items-center justify-center gap-2">
+                        <span>🧬 DEPLOY HELICAL STRAKES</span>
+                    </button>
+                    <div class="text-[10px] text-slate-400 mt-2 text-center">
+                        Strakes break the coherence of vortex shedding, eliminating VIV.
+                    </div>
+                </div>
+
+                <!-- Telemetry Dashboard -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col gap-3 flex-1">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">VIV Telemetry</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Vortex Shedding Frequency">Shedding Freq ($f_s$)</div>
+                            <div id="val-fs" class="text-xl font-bold text-sky-400">0.20 Hz</div>
+                            <div class="text-[9px] text-slate-500">Natural Freq ($f_n$): 0.50 Hz</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Vibration Amplitude in Diameters">Amplitude ($A/D$)</div>
+                            <div id="val-amp" class="text-xl font-bold text-emerald-400">0.05</div>
+                            <div class="text-[9px] text-slate-500">Max allowable: 0.1</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center col-span-2 shadow-lg">
+                            <div class="flex justify-between text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                                <span>Accumulated Fatigue Damage</span>
+                                <span id="val-fatigue" class="text-emerald-400 font-bold">0.0%</span>
+                            </div>
+                            <div class="w-full bg-slate-900 rounded-full h-3 mt-1 border border-slate-700 overflow-hidden relative">
+                                <div id="bar-fatigue" class="bg-emerald-500 h-full transition-all duration-200" style="width: 0%"></div>
+                            </div>
+                            <div id="fatigue-warning" class="text-[10px] text-slate-500 mt-1 hidden">Miner's Rule Damage Accumulation</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="mt-auto bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all">
+                        ✅ GÜVENLİ <br><span class="text-slate-300 font-normal mt-1 block">Akıntı zayıf. Boru titreşimi önemsiz seviyede.</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas Visualization -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                <div class="flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[650px]">
+                    <canvas id="vivCanvas" width="900" height="600" class="max-w-full h-auto rounded-lg"></canvas>
+                    
+                    <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10 w-56">
+                        <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">2 Farklı Kamera Açısı</div>
+                        <div class="mb-2"><strong class="text-sky-300">Üst Ekran (Kuşbakışı):</strong> <br>Gördüğünüz o "top", aslında borunun üstten kesitidir! Suyu nasıl yardığını ve arkasındaki girdapları (Vortex) gösterir.</div>
+                        <div><strong class="text-amber-300">Alt Ekran (Yandan Bakış):</strong> <br>Deniz tabanına inen tüm boruyu ve akıntıdan kaynaklı yorulma/bükülme (Fatigue) noktalarını (Kırmızı) gösterir.</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('vivCanvas');
+        const ctx = canvas.getContext('2d');
+        const slCurrent = document.getElementById('slider-current');
+
+        // Physics State
+        let U = 0.5; // Current velocity m/s
+        let strakesActive = false;
+        
+        const D = 0.5; // Riser diameter (meters)
+        const St = 0.2; // Strouhal number (approx const for circular cylinders in this regime)
+        const fn = 0.6; // Natural frequency of the riser (Hz)
+        
+        let fs = 0; // Shedding frequency
+        let amplitude = 0; // Cross-flow amplitude ratio (A/D)
+        let fatigue = 0; // %
+        let phase = 0; // Oscillation phase
+        
+        let time = 0;
+        let lastVortexTime = 0;
+        let vortexSign = 1; // Alternates 1 and -1
+
+        // Particles for fluid visualization
+        let fluidLines = [];
+        let vortices = [];
+
+        // View geometry
+        const W = canvas.width;
+        const H = canvas.height;
+        const TOP_H = 300; // Cross-section view height
+        const BOT_Y = 320; // Side view start
+        const BOT_H = 260; // Side view height
+
+        // Initialize Fluid Lines
+        for(let i=0; i<15; i++) {
+            fluidLines.push({
+                yOffset: (i - 7) * 15,
+                points: [],
+                seed: Math.random() * 100
+            });
+        }
+
+        class Vortex {
+            constructor(x, y, sign, u_speed) {
+                this.x = x;
+                this.y = y;
+                this.sign = sign; // 1 (top, CW), -1 (bottom, CCW)
+                this.radius = 10;
+                this.maxRadius = 40;
+                this.life = 1.0;
+                this.speed = u_speed * 0.8; // Wake travels slightly slower than free stream
+                this.angle = 0;
+            }
+            update(dt) {
+                if (strakesActive) {
+                    // Strakes destroy coherence; vortices dissipate instantly into turbulence
+                    this.life -= dt * 2.0;
+                    this.radius += dt * 50;
+                    this.x += this.speed * dt * 50;
+                    this.y += (Math.random() - 0.5) * 5;
+                } else {
+                    // Organized Von Karman street
+                    this.x += this.speed * dt * 80; // Scale speed for canvas
+                    this.life -= dt * 0.2;
+                    if (this.radius < this.maxRadius) this.radius += dt * 15;
+                    this.angle += this.sign * dt * 4;
+                }
+            }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                // Color based on rotation direction
+                let r = this.sign > 0 ? 239 : 56;
+                let g = this.sign > 0 ? 68 : 189;
+                let b = this.sign > 0 ? 68 : 248;
+                
+                ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${this.life * 0.5})`;
+                ctx.lineWidth = 2;
+                
+                ctx.beginPath();
+                // Draw a spiral
+                for(let i=0; i<15; i++) {
+                    let angle = i * 0.5;
+                    let rad = (i/15) * this.radius;
+                    let px = Math.cos(angle) * rad;
+                    let py = Math.sin(angle) * rad;
+                    if (i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function toggleStrakes() {
+            strakesActive = !strakesActive;
+            let btn = document.getElementById('btn-strake');
+            if (strakesActive) {
+                btn.innerHTML = "<span>🧬 HELICAL STRAKES DEPLOYED</span>";
+                btn.className = "control-btn w-full py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-[0_0_15px_rgba(245,158,11,0.5)] border border-amber-400 flex items-center justify-center gap-2";
+            } else {
+                btn.innerHTML = "<span>🧬 DEPLOY HELICAL STRAKES</span>";
+                btn.className = "control-btn w-full py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg font-bold shadow-lg border border-slate-500 flex items-center justify-center gap-2";
+            }
+            updatePhysics();
+        }
+
+        function updatePhysics() {
+            U = parseFloat(slCurrent.value);
+            document.getElementById('val-current').innerText = U.toFixed(1) + " m/s";
+
+            // Strouhal relation: fs = St * U / D
+            fs = (St * U) / D;
+            
+            // Frequency ratio
+            let r = fs / fn;
+
+            // Amplitude response curve (Lock-in phenomenon)
+            // Gaussian bell curve peaking at r=1.0 (resonance)
+            let maxAmp = 1.2; // Max 1.2 Diameters
+            amplitude = maxAmp * Math.exp(-Math.pow(r - 1.0, 2) / 0.05);
+
+            // Strakes kill the VIV amplitude by disrupting shedding correlation
+            if (strakesActive) {
+                amplitude *= 0.05; 
+            }
+
+            // Update Dashboards
+            document.getElementById('val-fs').innerText = fs.toFixed(2) + " Hz";
+            document.getElementById('val-amp').innerText = amplitude.toFixed(2);
+
+            let statusBox = document.getElementById('status-box');
+            let ampEl = document.getElementById('val-amp');
+
+            if (strakesActive) {
+                ampEl.className = "text-xl font-bold text-emerald-400";
+                statusBox.className = "mt-auto bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)]";
+                statusBox.innerHTML = "✅ VIV BASTIRILDI <br><span class='text-emerald-100 font-normal mt-1 block'>Strakeler girdapları parçalıyor. Akıntı ne olursa olsun boru güvende.</span>";
+            } else if (amplitude > 0.8) {
+                ampEl.className = "text-xl font-bold text-red-500 animate-pulse";
+                statusBox.className = "mt-auto bg-red-900/50 border border-red-500 p-3 rounded-lg text-red-200 text-xs font-semibold leading-relaxed text-center transition-all shadow-[0_0_15px_rgba(239,68,68,0.5)]";
+                statusBox.innerHTML = "🚨 REZONANS (AĞIR YORULMA)! <br><span class='text-red-100 font-normal mt-1 block'>Girdap Frekansı = Doğal Frekans! Boru şiddetle sallanıyor. Kopma riski çok yüksek!</span>";
+            } else if (amplitude > 0.3) {
+                ampEl.className = "text-xl font-bold text-amber-400";
+                statusBox.className = "mt-auto bg-amber-900/40 border border-amber-500 p-3 rounded-lg text-amber-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                statusBox.innerHTML = "⚠️ ORTA ŞİDDETLİ TİTREŞİM <br><span class='text-amber-100 font-normal mt-1 block'>Boru sallanıyor. Metal yorgunluğu birikiyor.</span>";
+            } else {
+                ampEl.className = "text-xl font-bold text-sky-400";
+                statusBox.className = "mt-auto bg-sky-900/40 border border-sky-500 p-3 rounded-lg text-sky-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                statusBox.innerHTML = "✅ GÜVENLİ (REZONANS YOK) <br><span class='text-sky-100 font-normal mt-1 block'>Akıntı hızı rezonans yaratmıyor. Stres limitler dahilinde.</span>";
+            }
+        }
+
+        function drawTopView(dt) {
+            // Background
+            let bgGrad = ctx.createLinearGradient(0,0, W, 0);
+            bgGrad.addColorStop(0, '#0f172a');
+            bgGrad.addColorStop(1, '#020617');
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, W, TOP_H);
+
+            const R = 40; // Riser radius in px
+            const cX = W / 2; // <--- HİZALAMA DÜZELTİLDİ (Eskiden 200'dü, alt boruyla ortalandı)
+            const cY = TOP_H / 2;
+
+            // Riser Oscillation
+            let currentOscillation = amplitude * Math.sin(phase) * R * 1.5;
+
+            // Draw Fluid Lines (Streamlines)
+            ctx.lineWidth = 1.5;
+            fluidLines.forEach(fl => {
+                let baseX = 0;
+                let baseY = cY + fl.yOffset;
+                
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(56, 189, 248, ${0.1 + (U/5)})`;
+                
+                for(let x=0; x<W; x+=10) {
+                    let y = baseY;
+                    let dx = x - cX;
+                    let dy = y - (cY + currentOscillation);
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    
+                    // Deflect around cylinder
+                    if (dist < R * 3 && x < cX + R) {
+                        let force = (R*R*R) / (dist*dist*dist);
+                        y += Math.sign(dy) * force * 15;
+                    }
+
+                    // Wake turbulence if strakes active
+                    if (strakesActive && x > cX + R && Math.abs(dy) < R*2) {
+                        y += (Math.random() - 0.5) * 10 * U;
+                    }
+
+                    // Animated flow dashes
+                    if (x === 0) ctx.moveTo(x, y);
+                    else {
+                        if (Math.sin(x*0.05 - time*U*10 + fl.seed) > 0) ctx.lineTo(x, y);
+                        else ctx.moveTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            });
+
+            // Vortex Shedding Logic
+            let sheddingPeriod = 1.0 / (fs + 0.001);
+            if (time - lastVortexTime > sheddingPeriod * 0.5) {
+                // Spawn new vortex at the trailing edge
+                let vy = cY + currentOscillation + (vortexSign * R * 1.2);
+                vortices.push(new Vortex(cX + R, vy, vortexSign, U));
+                vortexSign *= -1; // Alternate side
+                lastVortexTime = time;
+            }
+
+            // Update & Draw Vortices
+            for (let i = vortices.length - 1; i >= 0; i--) {
+                let v = vortices[i];
+                v.update(dt);
+                v.draw();
+                if (v.life <= 0 || v.x > W) vortices.splice(i, 1);
+            }
+
+            // Draw Riser Cross Section
+            ctx.fillStyle = '#94a3b8'; // Steel color matching bottom view
+            ctx.beginPath(); ctx.arc(cX, cY + currentOscillation, R, 0, Math.PI*2); ctx.fill();
+            
+            // Draw Strakes (Fins)
+            if (strakesActive) {
+                ctx.fillStyle = '#f59e0b'; // Amber strakes
+                for(let i=0; i<3; i++) {
+                    let sAngle = (time * U * 2) + (i * Math.PI*2/3); // Rotating effect representing helix along z-axis
+                    let sx = cX + Math.cos(sAngle) * (R + 10);
+                    let sy = cY + currentOscillation + Math.sin(sAngle) * (R + 10);
+                    ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI*2); ctx.fill();
+                    
+                    // Fin lines
+                    ctx.strokeStyle = '#d97706'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(cX, cY + currentOscillation); ctx.lineTo(sx, sy); ctx.stroke();
+                }
+            }
+
+            // Direction arrow
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = "bold 14px Arial";
+            ctx.fillText("OKYANUS AKINTISI \u2192", 20, 30);
+        }
+
+        function drawBottomView() {
+            // Divider
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, TOP_H, W, 20);
+            
+            // Visual connection lines between top and bottom view
+            ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(W/2 - 40, TOP_H); ctx.lineTo(W/2 - 40, TOP_H + 20);
+            ctx.moveTo(W/2 + 40, TOP_H); ctx.lineTo(W/2 + 40, TOP_H + 20);
+            ctx.stroke(); ctx.setLineDash([]);
+            
+            ctx.fillStyle = '#94a3b8'; ctx.font = "bold 10px Arial"; ctx.textAlign = "center";
+            ctx.fillText("▲ ÜST EKRAN (KUŞBAKIŞI KESİT)   |   AYNI BORU (FARKLI AÇILAR)   |   ▼ ALT EKRAN (YANDAN PROFİL)", W/2, TOP_H + 14);
+            ctx.textAlign = "left";
+
+            // Background
+            let bgGrad = ctx.createLinearGradient(0, BOT_Y, 0, BOT_Y + BOT_H);
+            bgGrad.addColorStop(0, '#0369a1'); // Lighter blue
+            bgGrad.addColorStop(1, '#082f49'); // Dark abyss
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, BOT_Y, W, BOT_H);
+
+            // Seabed
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, BOT_Y + BOT_H - 20, W, 20);
+            
+            const riserX = W / 2;
+            const topY = BOT_Y + 20;
+            const botY = BOT_Y + BOT_H - 20;
+            const L = botY - topY;
+
+            let maxDeflection = amplitude * 80; // Scale amplitude for visual impact
+            let currentDeflection = maxDeflection * Math.sin(phase);
+
+            // Calculate mode shape (1st mode: half sine wave)
+            let points = [];
+            for (let y = topY; y <= botY; y += 5) {
+                let normY = (y - topY) / L;
+                let modeShape = Math.sin(normY * Math.PI); // First mode
+                let x = riserX + modeShape * currentDeflection;
+                points.push({x, y, modeShape});
+            }
+
+            // Draw Strakes wrapping around riser
+            if (strakesActive) {
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 14; // Thicker to represent width of pipe + strakes
+                ctx.lineCap = 'butt';
+                
+                // Draw helix
+                for (let i = 0; i < points.length - 1; i++) {
+                    let pt = points[i];
+                    // Helix equation wrapped on 2D projection
+                    let helixOffset = Math.sin((pt.y * 0.1) - (time*2)) * 6; 
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(pt.x + helixOffset - 5, pt.y);
+                    ctx.lineTo(pt.x + helixOffset + 5, pt.y+5);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw Main Riser Pipe
+            ctx.lineWidth = 10;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            
+            // Stress/Fatigue Color Mapping
+            // Belly of the curve (normY ~ 0.5) has highest bending stress
+            for (let i = 0; i < points.length - 1; i++) {
+                let pt = points[i];
+                let nextPt = points[i+1];
+                
+                ctx.beginPath();
+                ctx.moveTo(pt.x, pt.y);
+                ctx.lineTo(nextPt.x, nextPt.y);
+                
+                // If amplitude is high, color turns red at high stress points
+                let stress = Math.abs(currentDeflection) * pt.modeShape / 80; // normalized stress 0-1
+                if (stress > 0.8) ctx.strokeStyle = '#ef4444'; // Danger Red
+                else if (stress > 0.4) ctx.strokeStyle = '#f59e0b'; // Amber
+                else ctx.strokeStyle = '#94a3b8'; // Safe Steel
+                
+                ctx.stroke();
+            }
+
+            // Anchors
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(riserX - 15, topY - 10, 30, 10); // Surface hang-off
+            ctx.fillRect(riserX - 15, botY, 30, 20); // Subsea wellhead
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = "12px Arial";
+            ctx.fillText("Yüzey Gemisi (FPU)", riserX + 25, topY);
+            ctx.fillText("Denizaltı Kuyusu", riserX + 25, botY + 15);
+        }
+
+        let lastTime = 0;
+        function animate(timestamp) {
+            let dt = (timestamp - lastTime) / 1000;
+            if (dt > 0.1) dt = 0.1; // Cap dt
+            lastTime = timestamp;
+            time += dt;
+
+            updatePhysics();
+
+            // Update Phase for oscillation
+            // Oscillation freq is forced by shedding freq (lock-in)
+            let actualFreq = (amplitude > 0.2) ? fs : fn; 
+            phase += 2 * Math.PI * actualFreq * dt;
+
+            // Fatigue Accumulation (Miner's Rule approximation)
+            // Damage is proportional to Stress^m (m typically 3 to 4 for steel)
+            if (amplitude > 0.1) {
+                let stressCycle = Math.pow(amplitude, 3);
+                fatigue += stressCycle * dt * 0.05; // Scaling factor for visual
+                if (fatigue > 100) fatigue = 100;
+            }
+
+            // Update Fatigue UI
+            document.getElementById('val-fatigue').innerText = fatigue.toFixed(1) + "%";
+            document.getElementById('bar-fatigue').style.width = fatigue + "%";
+            let fBar = document.getElementById('bar-fatigue');
+            let fVal = document.getElementById('val-fatigue');
+            let fWarn = document.getElementById('fatigue-warning');
+            
+            if (fatigue > 80) {
+                fBar.className = "bg-red-500 h-full transition-all duration-200";
+                fVal.className = "text-red-500 font-bold animate-pulse";
+                fWarn.className = "text-[10px] text-red-500 mt-1 font-bold animate-pulse";
+                fWarn.innerText = "CRITICAL FAILURE IMMINENT!";
+                fWarn.classList.remove('hidden');
+            } else if (fatigue > 40) {
+                fBar.className = "bg-amber-500 h-full transition-all duration-200";
+                fVal.className = "text-amber-400 font-bold";
+                fWarn.classList.add('hidden');
+            } else {
+                fBar.className = "bg-emerald-500 h-full transition-all duration-200";
+                fVal.className = "text-emerald-400 font-bold";
+                fWarn.classList.add('hidden');
+            }
+
+            drawTopView(dt);
+            drawBottomView();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        updatePhysics();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

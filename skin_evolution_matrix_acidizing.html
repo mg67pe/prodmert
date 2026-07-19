@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skin Evolution & Matrix Acidizing Simulator</title>
+    <style>
+        :root {
+            --bg-color: #050a15;
+            --panel-bg: #0f172a;
+            --text-main: #38bdf8;
+            --text-muted: #94a3b8;
+            --alert-red: #ef4444;
+            --warning-orange: #f59e0b;
+            --safe-green: #10b981;
+            --acid-green: #39ff14;
+            --vlp-red: #f43f5e;
+            --ipr-blue: #0ea5e9;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 26px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: var(--acid-green);
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .canvas-title {
+            text-align: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        canvas {
+            background: #020617;
+            border: 1px solid #334155;
+            border-radius: 4px;
+        }
+
+        .controls {
+            width: 100%;
+            max-width: 860px;
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .dashboard {
+            flex: 1;
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid var(--text-main);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-box {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            font-family: 'Consolas', monospace;
+        }
+
+        .action-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .btn {
+            background-color: #334155;
+            color: #fff;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-produce {
+            background-color: var(--warning-orange);
+            color: #000;
+        }
+        .btn-produce:hover:not(:disabled) { background-color: #d97706; }
+
+        .btn-acid {
+            background-color: var(--acid-green);
+            color: #000;
+        }
+        .btn-acid:hover:not(:disabled) { background-color: #16a34a; }
+
+        .alert-text {
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--alert-red);
+            margin-top: 5px;
+            min-height: 15px;
+        }
+        
+        .equation-box {
+            grid-column: span 2;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid #334155;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'Consolas', monospace;
+            color: #94a3b8;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Skin Evolution & Matrix Acidizing</h1>
+        <p>NODAL ANALYSIS & IPR SHIFT SIMULATOR</p>
+    </div>
+
+    <div class="container">
+        <!-- Physical Wellbore View -->
+        <div class="panel">
+            <div class="canvas-title">Radial Flow & Formation Damage</div>
+            <canvas id="wellCanvas" width="400" height="400"></canvas>
+        </div>
+
+        <!-- Nodal Analysis Chart -->
+        <div class="panel">
+            <div class="canvas-title">Nodal Analysis (IPR vs VLP)</div>
+            <canvas id="graphCanvas" width="400" height="400"></canvas>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="dashboard">
+            <div class="stat-box">
+                <span class="stat-label">Skin Factor (S)</span>
+                <span class="stat-value" id="skinVal">0.0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Flow Rate (Q)</span>
+                <span class="stat-value" id="rateVal" style="color:var(--safe-green)">0.0 MMscfd</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">BHP Flowing (Pwf)</span>
+                <span class="stat-value" id="pwfVal">0 psi</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Productivity Index (PI)</span>
+                <span class="stat-value" id="piVal">0.0 Mscf/psi</span>
+            </div>
+            <div class="equation-box">
+                Darcy: Q = [k·h·(Pr - Pwf)] / [141.2·μ·B·(ln(re/rw) + S)]
+            </div>
+        </div>
+
+        <div class="action-panel">
+            <button class="btn btn-produce" id="btnProduce">PRODUCE WELL (Build up Skin)</button>
+            <button class="btn btn-acid" id="btnAcid" disabled>PUMP MATRIX ACID (Wormholing)</button>
+            <div class="alert-text" id="alertMsg"></div>
+        </div>
+    </div>
+
+    <script>
+        const wellCanvas = document.getElementById('wellCanvas');
+        const wCtx = wellCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('graphCanvas');
+        const gCtx = graphCanvas.getContext('2d');
+
+        // UI Elements
+        const skinVal = document.getElementById('skinVal');
+        const rateVal = document.getElementById('rateVal');
+        const pwfVal = document.getElementById('pwfVal');
+        const piVal = document.getElementById('piVal');
+        const alertMsg = document.getElementById('alertMsg');
+        
+        const btnProduce = document.getElementById('btnProduce');
+        const btnAcid = document.getElementById('btnAcid');
+
+        // Reservoir Parameters & Math Model
+        const Pr = 3000; // psi
+        let S = 0.0;     // Skin factor
+        let targetS = 0.0;
+        
+        let Q_current = 0;
+        let Pwf_current = 0;
+        
+        let state = 'IDLE'; // IDLE, PRODUCING, ACIDIZING
+        let wormholes = [];
+
+        // Mathematical Model
+        // VLP Equation: Pwf = 800 + 0.15 * Q^2
+        function calcVLP(Q) {
+            return 800 + 0.15 * Math.pow(Q, 2);
+        }
+
+        // IPR Equation (Linearized for visual simplicity): Pwf = Pr - Q * 10 * (1 + 0.2*S)
+        function calcIPR(Q, skin) {
+            // Prevent negative multiplier if skin is very low (e.g., -5)
+            let skinEffect = (1 + 0.2 * skin);
+            if (skinEffect < 0.1) skinEffect = 0.1;
+            return Pr - Q * 10 * skinEffect;
+        }
+
+        // Calculate Intersection (Quadratic: 0.15*Q^2 + (10*(1+0.2S))*Q + (800-3000) = 0)
+        function calculateOperatingPoint(skin) {
+            let a = 0.15;
+            let skinEffect = (1 + 0.2 * skin);
+            if (skinEffect < 0.1) skinEffect = 0.1;
+            let b = 10 * skinEffect;
+            let c = 800 - Pr; // -2200
+
+            let discriminant = Math.pow(b, 2) - 4 * a * c;
+            if (discriminant < 0) return { Q: 0, Pwf: Pr };
+
+            let Q = (-b + Math.sqrt(discriminant)) / (2 * a);
+            if (Q < 0) Q = 0;
+            let Pwf = calcVLP(Q);
+
+            return { Q: Q, Pwf: Pwf };
+        }
+
+        function generateWormholes() {
+            wormholes = [];
+            const numBranches = 12 + Math.random() * 8;
+            for(let i=0; i<numBranches; i++) {
+                let angle = (Math.PI * 2 / numBranches) * i + (Math.random()*0.2 - 0.1);
+                let length = 40 + Math.random() * 40;
+                wormholes.push({angle: angle, length: length, progress: 0});
+            }
+        }
+
+        function drawWellPhysical() {
+            wCtx.clearRect(0, 0, wellCanvas.width, wellCanvas.height);
+            const cx = 200, cy = 200;
+            const rw = 15; // Wellbore radius visual
+
+            // 1. Clean Formation (Background)
+            let radGrad = wCtx.createRadialGradient(cx, cy, rw, cx, cy, 200);
+            radGrad.addColorStop(0, '#451a03'); // Dark brown
+            radGrad.addColorStop(1, '#020617'); // Fade to dark
+            wCtx.fillStyle = radGrad;
+            wCtx.fillRect(0, 0, 400, 400);
+
+            // 2. Damage Zone (Skin > 0)
+            if (S > 0) {
+                wCtx.beginPath();
+                // Radius expands with Skin
+                let damageRadius = rw + (S * 12); 
+                wCtx.arc(cx, cy, damageRadius, 0, Math.PI * 2);
+                wCtx.fillStyle = `rgba(0, 0, 0, ${0.4 + (S/20)})`; // Gets darker and thicker
+                wCtx.fill();
+                
+                wCtx.strokeStyle = 'rgba(255, 68, 68, 0.3)';
+                wCtx.setLineDash([5, 5]);
+                wCtx.stroke();
+                wCtx.setLineDash([]);
+                
+                // Label
+                wCtx.fillStyle = 'rgba(255, 68, 68, 0.7)';
+                wCtx.font = '10px Arial';
+                wCtx.fillText("DAMAGE ZONE (SKIN)", cx + damageRadius + 5, cy);
+            }
+
+            // 3. Wormholes (Skin < 0, Acidizing)
+            if (S < 0 && wormholes.length > 0) {
+                wCtx.lineWidth = 2;
+                wCtx.strokeStyle = 'var(--acid-green)';
+                wCtx.shadowColor = 'var(--acid-green)';
+                wCtx.shadowBlur = 10;
+                
+                wormholes.forEach(wh => {
+                    wCtx.beginPath();
+                    wCtx.moveTo(cx + Math.cos(wh.angle)*rw, cy + Math.sin(wh.angle)*rw);
+                    let extX = cx + Math.cos(wh.angle) * (rw + wh.length * wh.progress);
+                    let extY = cy + Math.sin(wh.angle) * (rw + wh.length * wh.progress);
+                    wCtx.lineTo(extX, extY);
+                    wCtx.stroke();
+                });
+                wCtx.shadowBlur = 0;
+            }
+
+            // 4. Wellbore Casing/Screen
+            wCtx.beginPath();
+            wCtx.arc(cx, cy, rw, 0, Math.PI * 2);
+            wCtx.fillStyle = '#334155';
+            wCtx.fill();
+            wCtx.strokeStyle = '#94a3b8';
+            wCtx.lineWidth = 3;
+            wCtx.stroke();
+
+            // Flow arrows indicating direction to wellbore
+            wCtx.strokeStyle = 'rgba(14, 165, 233, 0.5)';
+            wCtx.lineWidth = 2;
+            for(let i=0; i<4; i++) {
+                let a = i * Math.PI/2 + (Date.now()/1000); // Rotating arrows
+                let dist = 60 - (S*2); // Arrows start further if skin is high? Or just animate them.
+                wCtx.beginPath();
+                wCtx.moveTo(cx + Math.cos(a)*(rw+30), cy + Math.sin(a)*(rw+30));
+                wCtx.lineTo(cx + Math.cos(a)*(rw+10), cy + Math.sin(a)*(rw+10));
+                
+                // Arrow heads
+                wCtx.lineTo(cx + Math.cos(a-0.2)*(rw+15), cy + Math.sin(a-0.2)*(rw+15));
+                wCtx.moveTo(cx + Math.cos(a)*(rw+10), cy + Math.sin(a)*(rw+10));
+                wCtx.lineTo(cx + Math.cos(a+0.2)*(rw+15), cy + Math.sin(a+0.2)*(rw+15));
+                wCtx.stroke();
+            }
+        }
+
+        function drawGraph() {
+            gCtx.clearRect(0, 0, graphCanvas.width, graphCanvas.height);
+            
+            const padding = 40;
+            const width = graphCanvas.width - padding * 2;
+            const height = graphCanvas.height - padding * 2;
+            
+            // Grid & Axes
+            gCtx.strokeStyle = '#1e293b';
+            gCtx.lineWidth = 1;
+            gCtx.beginPath();
+            for(let i=0; i<=5; i++) {
+                // Horizontal
+                let y = padding + i*(height/5);
+                gCtx.moveTo(padding, y);
+                gCtx.lineTo(padding+width, y);
+                // Vertical
+                let x = padding + i*(width/5);
+                gCtx.moveTo(x, padding);
+                gCtx.lineTo(x, padding+height);
+            }
+            gCtx.stroke();
+
+            gCtx.strokeStyle = '#94a3b8';
+            gCtx.lineWidth = 2;
+            // Y Axis (Pwf)
+            gCtx.beginPath();
+            gCtx.moveTo(padding, padding);
+            gCtx.lineTo(padding, padding+height);
+            gCtx.stroke();
+            // X Axis (Q)
+            gCtx.beginPath();
+            gCtx.moveTo(padding, padding+height);
+            gCtx.lineTo(padding+width, padding+height);
+            gCtx.stroke();
+
+            gCtx.fillStyle = '#94a3b8';
+            gCtx.font = '10px Arial';
+            gCtx.fillText("Pwf (psi)", 5, 20);
+            gCtx.fillText("0", 15, padding+height+5);
+            gCtx.fillText("3500", 5, padding+5);
+            
+            gCtx.fillText("Flow Rate Q (MMscfd)", graphCanvas.width/2 - 40, graphCanvas.height - 10);
+            gCtx.fillText("150", graphCanvas.width - 25, padding+height+15);
+
+            // Coordinate Mappers
+            // Q ranges 0 to 150
+            // Pwf ranges 0 to 3500
+            function mapX(q) { return padding + (q / 150) * width; }
+            function mapY(p) { return padding + height - (p / 3500) * height; }
+
+            // Draw VLP (Static)
+            gCtx.strokeStyle = 'var(--vlp-red)';
+            gCtx.lineWidth = 3;
+            gCtx.beginPath();
+            for(let q=0; q<=150; q+=5) {
+                let p = calcVLP(q);
+                if (p > 3500) break;
+                if(q===0) gCtx.moveTo(mapX(q), mapY(p));
+                else gCtx.lineTo(mapX(q), mapY(p));
+            }
+            gCtx.stroke();
+            gCtx.fillStyle = 'var(--vlp-red)';
+            gCtx.fillText("VLP (Tubing)", mapX(130), mapY(calcVLP(130)) - 10);
+
+            // Draw IPR (Dynamic based on S)
+            gCtx.strokeStyle = 'var(--ipr-blue)';
+            gCtx.lineWidth = 3;
+            gCtx.beginPath();
+            for(let q=0; q<=150; q+=5) {
+                let p = calcIPR(q, S);
+                if (p < 0) break;
+                if(q===0) gCtx.moveTo(mapX(q), mapY(p));
+                else gCtx.lineTo(mapX(q), mapY(p));
+            }
+            gCtx.stroke();
+            gCtx.fillStyle = 'var(--ipr-blue)';
+            // Place IPR label dynamically
+            let labelQ = 80;
+            gCtx.fillText("IPR (Reservoir)", mapX(labelQ), mapY(calcIPR(labelQ, S)) + 15);
+
+            // Draw Operating Point
+            let op = calculateOperatingPoint(S);
+            Q_current = op.Q;
+            Pwf_current = op.Pwf;
+
+            let opX = mapX(Q_current);
+            let opY = mapY(Pwf_current);
+
+            // Dotted lines
+            gCtx.strokeStyle = '#fff';
+            gCtx.lineWidth = 1;
+            gCtx.setLineDash([5, 5]);
+            gCtx.beginPath();
+            gCtx.moveTo(opX, opY);
+            gCtx.lineTo(opX, padding+height); // To X axis
+            gCtx.moveTo(opX, opY);
+            gCtx.lineTo(padding, opY); // To Y axis
+            gCtx.stroke();
+            gCtx.setLineDash([]);
+
+            // Dot
+            gCtx.beginPath();
+            gCtx.arc(opX, opY, 6, 0, Math.PI*2);
+            gCtx.fillStyle = '#facc15'; // Yellow dot
+            gCtx.fill();
+            gCtx.strokeStyle = '#000';
+            gCtx.stroke();
+        }
+
+        function updateUI() {
+            skinVal.innerText = S > 0 ? "+" + S.toFixed(1) : S.toFixed(1);
+            if (S > 5) skinVal.style.color = 'var(--alert-red)';
+            else if (S < 0) skinVal.style.color = 'var(--acid-green)';
+            else skinVal.style.color = '#fff';
+
+            rateVal.innerText = Q_current.toFixed(1) + " MMscfd";
+            pwfVal.innerText = Pwf_current.toFixed(0) + " psi";
+            
+            // PI = Q / (Pr - Pwf)
+            let drawdown = Pr - Pwf_current;
+            let pi = drawdown > 0 ? (Q_current * 1000) / drawdown : 0; // Mscf/psi
+            piVal.innerText = pi.toFixed(1) + " Mscf/psi";
+        }
+
+        function animate() {
+            if (state === 'PRODUCING') {
+                if (S < targetS) {
+                    S += 0.05; // Simulate damage buildup
+                } else {
+                    state = 'IDLE';
+                    btnAcid.disabled = false;
+                    alertMsg.innerText = "WELL DAMAGED. PRODUCTION DROPPED. ACID JOB REQUIRED.";
+                }
+            } else if (state === 'ACIDIZING') {
+                if (S > targetS) {
+                    S -= 0.15; // Rapid skin removal
+                    // Animate wormholes
+                    wormholes.forEach(wh => {
+                        if (wh.progress < 1) wh.progress += 0.02;
+                    });
+                } else {
+                    state = 'IDLE';
+                    alertMsg.innerText = "MATRIX ACIDIZING SUCCESSFUL. WORMHOLES CREATED (S = -2).";
+                    alertMsg.style.color = 'var(--acid-green)';
+                }
+            }
+
+            drawWellPhysical();
+            drawGraph();
+            updateUI();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Interactions
+        btnProduce.addEventListener('click', () => {
+            state = 'PRODUCING';
+            targetS = 10.0;
+            btnProduce.disabled = true;
+            btnAcid.disabled = true;
+            wormholes = []; // Reset wormholes if any
+            alertMsg.style.color = 'var(--warning-orange)';
+            alertMsg.innerText = "PRODUCING... FINES MIGRATION & SCALE BUILDING UP (SKIN INCREASING)";
+        });
+
+        btnAcid.addEventListener('click', () => {
+            state = 'ACIDIZING';
+            targetS = -2.0;
+            btnAcid.disabled = true;
+            generateWormholes();
+            alertMsg.style.color = 'var(--acid-green)';
+            alertMsg.innerText = "PUMPING ACID... DISSOLVING DAMAGE & CREATING WORMHOLES";
+            
+            // Re-enable produce after some time to allow loop
+            setTimeout(() => {
+                btnProduce.disabled = false;
+            }, 3000);
+        });
+
+        // Initialize
+        drawWellPhysical();
+        drawGraph();
+        updateUI();
+        animate();
+
+    </script>
+</body>
+</html>

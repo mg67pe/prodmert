@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buckley-Leverett Fractional Flow Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-blue-400 mb-2">Secondary Recovery: Buckley-Leverett Simulator</h1>
+            <p class="text-slate-400 text-sm">Fractional Flow ($f_w$), Welge Tangent & Water Front Advance at Breakthrough</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-blue-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-widest mb-4 border-b border-blue-900 pb-2">Fluid Properties</h2>
+                    
+                    <div class="slider-label"><span>Viscosity Ratio (μ<sub>o</sub> / μ<sub>w</sub>)</span> <span id="val-mu" class="font-mono text-white">10.0</span></div>
+                    <input type="range" id="slider-mu" min="1.0" max="100.0" step="1.0" value="10.0" style="accent-color: #3b82f6;">
+                    
+                    <div class="text-[10px] text-slate-400 mt-[-10px] mb-4">Higher ratio means heavier oil. Increases water mobility and early breakthrough.</div>
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-emerald-900 shadow-xl h-fit mt-2">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-4 border-b border-emerald-900 pb-2">Rock / Saturation Limits</h2>
+                    
+                    <div class="slider-label"><span>Connate Water (S<sub>wc</sub>)</span> <span id="val-swc" class="font-mono text-cyan-300">0.20</span></div>
+                    <input type="range" id="slider-swc" min="0.10" max="0.35" step="0.01" value="0.20" style="accent-color: #06b6d4;">
+                    
+                    <div class="slider-label mt-2"><span>Residual Oil (S<sub>or</sub>)</span> <span id="val-sor" class="font-mono text-amber-300">0.25</span></div>
+                    <input type="range" id="slider-sor" min="0.10" max="0.40" step="0.01" value="0.25" style="accent-color: #f59e0b;">
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas & Results -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-cyan-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Shock Front Sat. (S<sub>wf</sub>)</div>
+                        <div id="kpi-swf" class="text-2xl font-bold text-cyan-400">0.00</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Avg Saturation (S̅<sub>w</sub>)</div>
+                        <div id="kpi-swavg" class="text-2xl font-bold text-emerald-400">0.00</div>
+                        <div class="text-[10px] text-slate-500">Behind the front</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Recovery at BT (RF)</div>
+                        <div id="kpi-rf" class="text-2xl font-bold text-amber-400">0.0%</div>
+                        <div class="text-[10px] text-slate-500">Breakthrough Recovery</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Pore Volumes Injected</div>
+                        <div id="kpi-pvi" class="text-2xl font-bold text-purple-400">0.00</div>
+                        <div class="text-[10px] text-slate-500">W<sub>id</sub> at Breakthrough</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Area (Split into two sub-plots) -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[480px]">
+                    <canvas id="blCanvas" width="900" height="420" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-4 left-1/2 transform -translate-x-1/2 flex gap-12 w-full px-12 pointer-events-none">
+                        <div class="w-1/2 text-center text-sm font-bold text-slate-300 uppercase tracking-widest border-b border-slate-600 pb-1">Fractional Flow Curve (f<sub>w</sub> vs S<sub>w</sub>)</div>
+                        <div class="w-1/2 text-center text-sm font-bold text-slate-300 uppercase tracking-widest border-b border-slate-600 pb-1">Front Profile at Breakthrough (S<sub>w</sub> vs x<sub>D</sub>)</div>
+                    </div>
+                </div>
+
+                <!-- Insight Box -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Analyzing Displacement...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('blCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slMu = document.getElementById('slider-mu');
+        const slSwc = document.getElementById('slider-swc');
+        const slSor = document.getElementById('slider-sor');
+
+        // End-point relative permeabilities (Typical water-wet sandstone)
+        const krwo = 0.3;
+        const kroo = 0.8;
+
+        function calculateFractionalFlow() {
+            let mu_ratio = parseFloat(slMu.value);
+            let Swc = parseFloat(slSwc.value);
+            let Sor = parseFloat(slSor.value);
+
+            // Constraint check
+            if (Swc + Sor >= 0.9) {
+                Sor = 0.9 - Swc;
+                slSor.value = Sor;
+            }
+
+            document.getElementById('val-mu').innerText = mu_ratio.toFixed(1);
+            document.getElementById('val-swc').innerText = Swc.toFixed(2);
+            document.getElementById('val-sor').innerText = Sor.toFixed(2);
+
+            let fw_data = [];
+            let max_slope = 0;
+            let Swf = Swc;
+            let fwf = 0;
+
+            // Generate Fw curve and find Welge Tangent
+            for (let sw = Swc + 0.001; sw <= 1 - Sor; sw += 0.001) {
+                // Normalized saturation
+                let Se = (sw - Swc) / (1 - Swc - Sor);
+                
+                // Corey correlations (exponents = 2.0)
+                let krw = krwo * Math.pow(Se, 2);
+                let kro = kroo * Math.pow(1 - Se, 2);
+                
+                // Fractional flow equation
+                let fw = 1.0 / (1.0 + (kro / krw) / mu_ratio);
+                
+                fw_data.push({sw: sw, fw: fw});
+
+                // Derivative from Origin (Swc, 0)
+                let slope = fw / (sw - Swc);
+                if (slope > max_slope) {
+                    max_slope = slope;
+                    Swf = sw;
+                    fwf = fw;
+                }
+            }
+
+            // Calculate Average Sw and Breakthrough values
+            let Sw_avg = Swc + (1.0 / max_slope);
+            if (Sw_avg > 1 - Sor) Sw_avg = 1 - Sor; // Physical limit cap
+
+            // Recovery Factor at Breakthrough
+            let RF = ((Sw_avg - Swc) / (1 - Swc)) * 100;
+            
+            // Pore Volumes Injected at BT (Wid = 1 / max_slope)
+            let Wid = 1.0 / max_slope;
+
+            // Generate Front Profile (x_D vs S_w)
+            let profile_data = [];
+            
+            // For Sw >= Swf (Behind the front)
+            for (let sw = Swf; sw <= 1 - Sor; sw += 0.005) {
+                let Se = (sw - Swc) / (1 - Swc - Sor);
+                let krw = krwo * Math.pow(Se, 2);
+                let kro = kroo * Math.pow(1 - Se, 2);
+                let fw = 1.0 / (1.0 + (kro / krw) / mu_ratio);
+                
+                // Numerical derivative for dfw/dsw
+                let ds = 0.0001;
+                let Se_up = (sw + ds - Swc) / (1 - Swc - Sor);
+                let krw_up = krwo * Math.pow(Se_up, 2);
+                let kro_up = kroo * Math.pow(1 - Se_up, 2);
+                let fw_up = 1.0 / (1.0 + (kro_up / krw_up) / mu_ratio);
+                let dfw = (fw_up - fw) / ds;
+
+                // Position x_D = dfw/dsw * t_D. At breakthrough, t_D = Wid = 1/max_slope
+                let x_D = dfw * Wid;
+                
+                // Because numerical noise at very top, cap x_D
+                if (x_D > 1.0) x_D = 1.0;
+                
+                profile_data.push({sw: sw, x: x_D});
+            }
+
+            // Add the shock front drop
+            profile_data.push({sw: Swf, x: 1.0}); // Front reaches production well
+            profile_data.push({sw: Swc, x: 1.0}); // Drops to connate water
+
+            // Update KPIs
+            document.getElementById('kpi-swf').innerText = Swf.toFixed(2);
+            document.getElementById('kpi-swavg').innerText = Sw_avg.toFixed(2);
+            document.getElementById('kpi-rf').innerText = RF.toFixed(1) + "%";
+            document.getElementById('kpi-pvi').innerText = Wid.toFixed(3);
+
+            // Update Insight Box
+            let insightBox = document.getElementById('insight-box');
+            if (mu_ratio > 30) {
+                insightBox.className = "bg-orange-900/40 border border-orange-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `⚠️ VISCOUS FINGERING WARNING <br>
+                    <span class='text-xs font-normal'>High viscosity ratio causes water to bypass the heavy oil. Notice the tangent slope is low and the shock front ($S_{wf}$) is weak. Breakthrough occurs extremely early, leaving massive oil behind.</span>`;
+            } else if (mu_ratio < 3) {
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ PISTON-LIKE DISPLACEMENT <br>
+                    <span class='text-xs font-normal'>Low viscosity ratio ensures an efficient sweep. The front saturation ($S_{wf}$) is very high, pushing oil almost like a solid piston. High recovery at breakthrough!</span>`;
+            } else {
+                insightBox.className = "bg-blue-900/40 border border-blue-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `ℹ️ STANDARD LEAKY DISPLACEMENT <br>
+                    <span class='text-xs font-normal'>Typical waterflood behavior. The Welge tangent determines the exact saturation of the water front hitting the producer.</span>`;
+            }
+
+            drawChart(fw_data, profile_data, Swc, Sor, Swf, fwf, Sw_avg);
+        }
+
+        function drawChart(fw_data, profile_data, Swc, Sor, Swf, fwf, Sw_avg) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padT = 50; const padB = 40; const padSides = 50;
+            const graphW = (W / 2) - padSides - 20; // Width of each sub-plot
+            const graphH = H - padT - padB;
+
+            const drawGrid = (startX, xLabel, yLabel, revY = false) => {
+                ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+                ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+                
+                // Y-Axis
+                ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+                for (let i = 0; i <= 10; i+=2) {
+                    let val = i / 10;
+                    let y = padT + graphH - (val * graphH);
+                    ctx.beginPath(); ctx.moveTo(startX, y); ctx.lineTo(startX + graphW, y); ctx.stroke();
+                    ctx.fillText(val.toFixed(1), startX - 10, y);
+                }
+                
+                // X-Axis
+                ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+                for (let i = 0; i <= 10; i+=2) {
+                    let val = i / 10;
+                    let x = startX + (val * graphW);
+                    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + graphH); ctx.stroke();
+                    ctx.fillText(val.toFixed(1), x, padT + graphH + 5);
+                }
+
+                // Labels
+                ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+                ctx.fillText(xLabel, startX + graphW/2, H - 15);
+                
+                ctx.save(); ctx.translate(startX - 35, padT + graphH/2); ctx.rotate(-Math.PI/2);
+                ctx.textAlign = 'center'; ctx.fillText(yLabel, 0, 0); ctx.restore();
+                
+                // Frame
+                ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+                ctx.strokeRect(startX, padT, graphW, graphH);
+            };
+
+            // ==========================================
+            // LEFT PLOT: Fractional Flow (fw vs Sw)
+            // ==========================================
+            let startLeft = padSides;
+            drawGrid(startLeft, "Water Saturation (Sw)", "Fractional Flow (fw)");
+
+            const getX1 = (sw) => startLeft + (sw * graphW);
+            const getY1 = (fw) => padT + graphH - (fw * graphH);
+
+            // Draw fw curve
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(getX1(Swc), getY1(0));
+            fw_data.forEach(pt => ctx.lineTo(getX1(pt.sw), getY1(pt.fw)));
+            ctx.stroke();
+
+            // Draw Welge Tangent Line (Red Dashed)
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(getX1(Swc), getY1(0));
+            ctx.lineTo(getX1(Sw_avg), getY1(1.0));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Mark Points
+            // Swc
+            ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.arc(getX1(Swc), getY1(0), 5, 0, Math.PI*2); ctx.fill();
+            // Swf (Tangent point)
+            ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(getX1(Swf), getY1(fwf), 6, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.textAlign = 'left'; ctx.fillText(" Swf", getX1(Swf) + 5, getY1(fwf) + 10);
+            // Sw_avg (f=1 intercept)
+            ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(getX1(Sw_avg), getY1(1.0), 6, 0, Math.PI*2); ctx.fill();
+            ctx.stroke();
+            ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillText("S̅w ", getX1(Sw_avg) - 5, getY1(1.0) + 5);
+
+            // 1-Sor line
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(getX1(1-Sor), padT); ctx.lineTo(getX1(1-Sor), padT+graphH); ctx.stroke();
+            ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillText("1-Sor", getX1(1-Sor) + 5, padT + 20);
+            ctx.setLineDash([]);
+
+            // ==========================================
+            // RIGHT PLOT: Front Profile (Sw vs xD)
+            // ==========================================
+            let startRight = W/2 + 20;
+            drawGrid(startRight, "Dimensionless Distance (xD)", "Water Saturation (Sw)");
+
+            const getX2 = (xd) => startRight + (xd * graphW);
+            const getY2 = (sw) => padT + graphH - (sw * graphH);
+
+            // Draw Swc baseline
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.1)';
+            ctx.fillRect(startRight, getY2(Swc), graphW, graphH - getY2(Swc) + padT);
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(startRight, getY2(Swc)); ctx.lineTo(startRight+graphW, getY2(Swc)); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw Front Profile
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            
+            // Injector side is at 1-Sor, xD = 0
+            ctx.moveTo(getX2(0), getY2(1-Sor));
+            
+            profile_data.forEach(pt => {
+                ctx.lineTo(getX2(pt.x), getY2(pt.sw));
+            });
+            // Line ahead of front
+            ctx.lineTo(getX2(1.0), getY2(Swc)); 
+            ctx.stroke();
+
+            // Fill water area
+            ctx.beginPath();
+            ctx.moveTo(getX2(0), getY2(Swc));
+            ctx.lineTo(getX2(0), getY2(1-Sor));
+            profile_data.forEach(pt => ctx.lineTo(getX2(pt.x), getY2(pt.sw)));
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+            ctx.fill();
+
+            // Mark Injector & Producer
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText("Injector", getX2(0), padT - 10);
+            ctx.fillText("Producer", getX2(1.0), padT - 10);
+            
+            // Draw Producer wellbore
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(getX2(1.0), padT); ctx.lineTo(getX2(1.0), padT+graphH); ctx.stroke();
+        }
+
+        // Event Listeners
+        slMu.addEventListener('input', calculateFractionalFlow);
+        slSwc.addEventListener('input', calculateFractionalFlow);
+        slSor.addEventListener('input', calculateFractionalFlow);
+
+        // Run
+        setTimeout(calculateFractionalFlow, 100);
+
+    </script>
+</body>
+</html>

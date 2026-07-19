@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gas Material Balance: p/z vs Cumulative Production</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Reservoir Material Balance (p/z Plot)</h1>
+            <p class="text-slate-400 text-sm">Volumetric Depletion vs. Water Drive Effect on Initial Gas in Place (IGIP) Estimation</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Reservoir Parameters</h2>
+                    
+                    <div class="slider-label"><span>Actual IGIP (G)</span> <span id="val-igip" class="font-mono text-white">1500 Bcf</span></div>
+                    <input type="range" id="slider-igip" min="500" max="3000" step="50" value="1500" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label"><span>Initial p/z (p<sub>i</sub>/z<sub>i</sub>)</span> <span id="val-pzi" class="font-mono text-emerald-300">6000 psia</span></div>
+                    <input type="range" id="slider-pzi" min="3000" max="10000" step="100" value="6000" style="accent-color: #10b981;">
+                    
+                    <div class="slider-label"><span>Abandonment p/z</span> <span id="val-pzab" class="font-mono text-red-300">1000 psia</span></div>
+                    <input type="range" id="slider-pzab" min="500" max="2500" step="100" value="1000" style="accent-color: #ef4444;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-blue-900 shadow-[0_0_15px_rgba(59,130,246,0.15)] h-fit mt-2">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-widest mb-4 border-b border-blue-900 pb-2">Drive Mechanism</h2>
+                    
+                    <div class="slider-label"><span>Aquifer Strength</span> <span id="val-aquifer" class="font-mono text-blue-300">0%</span></div>
+                    <input type="range" id="slider-aquifer" min="0" max="100" step="5" value="0" style="accent-color: #3b82f6;">
+                    
+                    <div class="text-[10px] text-slate-400 mt-[-10px] leading-tight">
+                        0% = Pure Volumetric (Closed System).<br>
+                        >0% = Water Drive (Pressure maintenance causes deviation from straight line).
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas & Results -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">True IGIP (Actual)</div>
+                        <div id="kpi-true-igip" class="text-2xl font-bold text-white">0 Bcf</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-red-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Apparent IGIP (Extrapolated)</div>
+                        <div id="kpi-app-igip" class="text-2xl font-bold text-red-400">0 Bcf</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Estimated Ultimate Recovery</div>
+                        <div id="kpi-eur" class="text-2xl font-bold text-emerald-400">0 Bcf</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Recovery Factor (RF)</div>
+                        <div id="kpi-rf" class="text-2xl font-bold text-amber-400">0%</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Area -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[450px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">p/z vs. Cumulative Gas Production (G<sub>p</sub>)</h3>
+                    <canvas id="pzCanvas" width="900" height="400" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10">
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[2px] border-t-2 border-dashed border-[#10b981]"></span> Volumetric Baseline (Theoretical)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[3px] bg-[#3b82f6]"></span> Actual Reservoir Performance</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-6 h-[2px] border-t-2 border-dashed border-[#ef4444]"></span> Early Data Extrapolation</div>
+                        <div class="flex items-center gap-2"><span class="w-6 h-[2px] bg-[#64748b]"></span> Abandonment Limit</div>
+                    </div>
+                </div>
+
+                <!-- Insight Box -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Analyzing Material Balance...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pzCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slIgip = document.getElementById('slider-igip');
+        const slPzi = document.getElementById('slider-pzi');
+        const slPzab = document.getElementById('slider-pzab');
+        const slAq = document.getElementById('slider-aquifer');
+
+        function calculateMaterialBalance() {
+            let G = parseFloat(slIgip.value);
+            let pzi = parseFloat(slPzi.value);
+            let pzab = parseFloat(slPzab.value);
+            let aquiferPercent = parseFloat(slAq.value);
+            let omega = aquiferPercent / 100.0;
+
+            document.getElementById('val-igip').innerText = G + " Bcf";
+            document.getElementById('val-pzi').innerText = pzi + " psia";
+            document.getElementById('val-pzab').innerText = pzab + " psia";
+            document.getElementById('val-aquifer').innerText = aquiferPercent + "%";
+
+            // Safety check for logic
+            if (pzab >= pzi) pzab = pzi - 100;
+
+            let plotData = [];
+            let EUR = 0;
+            let apparentIGIP = G;
+            
+            // 1. Calculate the Apparent Extrapolation line using early data (Gp = 0 to 15% of G)
+            let earlyGp1 = 0;
+            let earlyPz1 = pzi;
+            let earlyGp2 = G * 0.15;
+            let earlyPz2 = pzi * (1 - earlyGp2/G) + pzi * omega * Math.pow(earlyGp2/G, 1.2);
+            
+            let slope = (earlyPz2 - earlyPz1) / (earlyGp2 - earlyGp1);
+            if (slope >= 0) slope = -0.0001; // Prevent positive slope division by zero
+            
+            apparentIGIP = -pzi / slope;
+
+            // 2. Generate curve data and find actual EUR
+            let reachedAbandonment = false;
+            let steps = 200;
+            let maxGpLimit = Math.max(G, apparentIGIP) * 1.05; // Extend X axis a bit further
+
+            for (let i = 0; i <= steps; i++) {
+                let Gp = (i / steps) * maxGpLimit;
+                
+                // Volumetric baseline (Straight line)
+                let pz_vol = pzi * (1 - Gp / G);
+                
+                // Actual performance (Water Drive deviation)
+                // Equation provides upward bowing pressure support
+                let pz_act = pz_vol;
+                if (Gp <= G) {
+                     pz_act = pzi * (1 - Gp/G) + pzi * omega * Math.pow(Gp/G, 1.3);
+                } else if (omega > 0) {
+                     // If Water drive is very strong, it can theoretically push past initial G (Physically means water replacing gas)
+                     // But we cap the actual curve logically
+                     pz_act = pzi * omega * Math.pow(1, 1.3) - (Gp - G)*slope; // fade out
+                }
+
+                if (pz_act < 0) pz_act = 0;
+
+                // Find EUR where actual curve hits abandonment pressure
+                if (!reachedAbandonment && pz_act <= pzab && Gp <= G) {
+                    // Refine interpolation
+                    let prev_pz = (i === 0) ? pzi : plotData[i-1].act;
+                    let prev_gp = (i === 0) ? 0 : plotData[i-1].gp;
+                    let ratio = (pzab - prev_pz) / (pz_act - prev_pz);
+                    EUR = prev_gp + ratio * (Gp - prev_gp);
+                    reachedAbandonment = true;
+                }
+
+                // Apparent line
+                let pz_app = pzi + slope * Gp;
+                if (pz_app < 0) pz_app = 0;
+
+                plotData.push({
+                    gp: Gp,
+                    vol: Math.max(0, pz_vol),
+                    act: pz_act,
+                    app: pz_app
+                });
+            }
+
+            // Fallback if EUR not hit within G
+            if (!reachedAbandonment) EUR = G; // Cap at G if strong water drive prevents pressure drop
+
+            // RF Calculation
+            let RF = (EUR / G) * 100;
+
+            // Update KPIs
+            document.getElementById('kpi-true-igip').innerText = Math.round(G) + " Bcf";
+            document.getElementById('kpi-app-igip').innerText = Math.round(apparentIGIP) + " Bcf";
+            document.getElementById('kpi-eur').innerText = Math.round(EUR) + " Bcf";
+            document.getElementById('kpi-rf').innerText = RF.toFixed(1) + "%";
+
+            // Update Insight Box (The Interview Trap Logic)
+            let insightBox = document.getElementById('insight-box');
+            if (aquiferPercent === 0) {
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-emerald-200 transition-all";
+                insightBox.innerHTML = `✅ PURE VOLUMETRIC RESERVOIR <br>
+                    <span class='text-xs font-normal'>The p/z curve is a perfect straight line. Extrapolating early data points accurately predicts the True IGIP (${Math.round(G)} Bcf). No pressure support.</span>`;
+            } else {
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full text-red-200 transition-all animate-pulse";
+                insightBox.innerHTML = `🚨 INTERVIEW TRAP: WATER DRIVE DETECTED! <br>
+                    <span class='text-xs font-normal'>Water influx supports reservoir pressure, causing the p/z curve to bend upwards. Extrapolating early straight-line data <b>OVERESTIMATES</b> the Initial Gas in Place (Apparent IGIP: ${Math.round(apparentIGIP)} Bcf vs True IGIP: ${Math.round(G)} Bcf).</span>`;
+            }
+
+            drawChart(plotData, G, apparentIGIP, pzi, pzab, EUR, aquiferPercent);
+        }
+
+        function drawChart(data, G, app_G, pzi, pzab, EUR, aq) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 65; const padR = 40; const padT = 30; const padB = 45;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            let X_MAX = Math.max(G, app_G) * 1.1;
+            let Y_MAX = pzi * 1.15;
+
+            const getX = (gp) => padL + (gp / X_MAX) * chartW;
+            const getY = (pz) => padT + chartH - (pz / Y_MAX) * chartH;
+
+            // Draw Grid
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px Inter, sans-serif'; 
+            
+            // Y-Axis
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            let yStep = Math.ceil(Y_MAX / 5 / 500) * 500;
+            for (let yVal = 0; yVal <= Y_MAX; yVal += yStep) {
+                let y = getY(yVal);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.fillText(yVal, padL - 10, y);
+            }
+            
+            ctx.save(); ctx.translate(20, H/2); ctx.rotate(-Math.PI/2); ctx.textAlign = 'center';
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("p/z (psia)", 0, 0); ctx.restore();
+
+            // X-Axis
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            let xStep = Math.ceil(X_MAX / 6 / 100) * 100;
+            for (let xVal = 0; xVal <= X_MAX; xVal += xStep) {
+                let x = getX(xVal);
+                ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
+                ctx.fillText(xVal, x, H - padB + 10);
+            }
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Cumulative Gas Production, Gp (Bcf)", W/2, H - 15);
+
+            // Draw Boundaries
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(padL, getY(0)); ctx.lineTo(W - padR, getY(0)); ctx.stroke(); // X-axis zero
+            ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H - padB); ctx.stroke(); // Y-axis zero
+
+            // Abandonment Pressure Line
+            let yAb = getY(pzab);
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(padL, yAb); ctx.lineTo(W - padR, yAb); ctx.stroke();
+            ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillText("Abandonment Limit (" + pzab + " psia)", padL + 10, yAb - 5);
+
+            // 1. Volumetric Line (Green Dashed)
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            data.forEach((pt, i) => {
+                if (pt.gp <= G) {
+                    if (i === 0) ctx.moveTo(getX(pt.gp), getY(pt.vol));
+                    else ctx.lineTo(getX(pt.gp), getY(pt.vol));
+                }
+            });
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // 2. Apparent Extrapolation Line (Red Dashed)
+            if (aq > 0) {
+                ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.setLineDash([8, 4]);
+                ctx.beginPath();
+                data.forEach((pt, i) => {
+                    if (pt.app >= 0) {
+                        if (i === 0) ctx.moveTo(getX(pt.gp), getY(pt.app));
+                        else ctx.lineTo(getX(pt.gp), getY(pt.app));
+                    }
+                });
+                ctx.stroke(); ctx.setLineDash([]);
+                
+                // Draw Apparent IGIP Point
+                let xApp = getX(app_G); let yApp = getY(0);
+                if (app_G <= X_MAX) {
+                    ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(xApp, yApp, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    ctx.fillText("Apparent IGIP", xApp, yApp - 10);
+                }
+            }
+
+            // 3. Actual Performance Line (Blue Solid)
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            let eurHit = false;
+            data.forEach((pt, i) => {
+                if (pt.gp <= G) {
+                    if (i === 0) ctx.moveTo(getX(pt.gp), getY(pt.act));
+                    else ctx.lineTo(getX(pt.gp), getY(pt.act));
+                }
+            });
+            ctx.stroke();
+
+            // Draw True IGIP Point
+            let xTrue = getX(G); let yTrue = getY(0);
+            ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(xTrue, yTrue, 5, 0, Math.PI*2); ctx.fill();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            ctx.fillText("True IGIP", xTrue, yTrue - 10);
+
+            // Draw EUR Point
+            let xEur = getX(EUR);
+            ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(xEur, yAb, 6, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+            ctx.fillText("EUR", xEur - 10, yAb + 5);
+
+        }
+
+        // Add Listeners
+        slIgip.addEventListener('input', calculateMaterialBalance);
+        slPzi.addEventListener('input', calculateMaterialBalance);
+        slPzab.addEventListener('input', calculateMaterialBalance);
+        slAq.addEventListener('input', calculateMaterialBalance);
+
+        // Init
+        setTimeout(calculateMaterialBalance, 100);
+
+    </script>
+</body>
+</html>
+```eof
+
+### Şovu Nasıl Yapacaksın Kanka?
+Açık deniz operasyonları için gireceğin o zorlu teknik mülakatlarda bir mühendise mutlaka "Peki sahada aktif bir su sürüşü (Aquifer) var mıydı? Olsaydı gaz rezervini nasıl hesaplardın?" diye sorarlar. Bu dashboard'u açıp şunları yapıyorsun:
+
+1. **Önce "Aquifer Strength" slider'ı sıfırdayken (%0) bırak:** *"Bakın, sistem tamamen kapalı ve hacimsel (Volumetric). Yeşil çizgiyi görüyor musunuz? Dümdüz iniyor. İki tane basınç noktası okuyup birleştirirsek, ekseni kestiği yerde True IGIP'yi (Gerçek Başlangıç Gazı) kusursuzca buluruz."*
+2. **Sonra Aquifer slider'ını yavaşça artır (%40 - %50 yap):** Mavi çizgi bir anda yay gibi yukarı doğru bükülecek. O sırada onlara dönüp şu altın vuruşu yap:
+*"Eğer sahada su sürüşü varsa, rezervuara giren su, basıncın düşmesini engeller. Basınç yüksek kaldığı için erken dönem verileri (kırmızı kesik çizgi) bizi yanıltır. Eğer bunu düz bir çizgi zannedip ekstrapole edersek, sahanın Apparent IGIP (Görünür Gaz) değerini gerçekte olduğundan MİLYARLARCA metreküp (Bcf) daha fazla sanıp şirkete milyar dolarlık yanlış tesis tasarımı yaptırırız. İşte gerçek IGIP (Yeşil) ile sahte IGIP (Kırmızı) arasındaki bu devasa fark, Material Balance'ın mülakat tuzağıdır."*
+
+Bu $p/z$ ve $G_p$ eğrilerini ekranda interaktif olarak esnettiğin an, karşındaki tecrübeli mühendislerin bile sana bakış açısı değişecektir. Başka eklememi istediğin ufak tefek detaylar var mı bu simülatörde?

@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEG Dehydration Tower Dynamics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #8b5cf6; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #8b5cf6; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-purple-400 mb-2">TEG Dehydration Tower Dynamics</h1>
+            <p class="text-slate-400 text-sm">Gas-Liquid Counter-Current Flow, Mass Transfer, and Dew Point Depression</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Process Controls -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-purple-400 uppercase tracking-widest mb-3 border-b border-purple-900 pb-2">Process Variables</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-sky-400"><span>Wet Gas Flow Rate (G)</span> <span id="val-gas" class="font-mono">50 MMscfd</span></div>
+                        <input type="range" id="slider-gas" min="10" max="120" step="5" value="50" style="accent-color: #38bdf8;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Flows UP. High gas rates can cause "Flooding" or TEG Carry-over.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-emerald-400"><span>Lean TEG Circ. Rate (L)</span> <span id="val-teg" class="font-mono">15 gal/min</span></div>
+                        <input type="range" id="slider-teg" min="2" max="30" step="1" value="15" style="accent-color: #10b981;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Flows DOWN. Glycol absorbs water. L/G ratio defines dehydration efficiency.
+                        </div>
+                    </div>
+
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-amber-400"><span>Inlet Gas Temp</span> <span id="val-temp" class="font-mono">85 °F</span></div>
+                        <input type="range" id="slider-temp" min="60" max="120" step="5" value="85" style="accent-color: #f59e0b;">
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700">
+                            Hotter gas holds exponentially more water vapor, requiring more TEG to dry.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-1">Product Quality (Sales Gas)</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Pounds of water per Million Standard Cubic Feet">Water Content</div>
+                            <div id="val-water-content" class="text-xl font-bold text-white">4.5</div>
+                            <div class="text-[9px] text-slate-500">lbs / MMscf</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1" title="Temperature at which water drops out">Water Dew Point</div>
+                            <div id="val-dew-point" class="text-xl font-bold text-sky-300">-15 °F</div>
+                            <div class="text-[9px] text-slate-500">at Pipeline Press.</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all">
+                        ✅ PIPELINE SPEC MET (< 7.0 lbs/MMscf) <br><span class="text-slate-300 font-normal mt-1 block">Sales gas is dry and safe for export.</span>
+                    </div>
+                </div>
+
+                <!-- Theory Box -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex-1 overflow-y-auto custom-scrollbar">
+                    <h3 class="text-xs font-bold text-purple-400 uppercase tracking-widest mb-2 border-b border-slate-600 pb-1">Mass Transfer Theory</h3>
+                    <p class="text-xs text-slate-300 mb-2"><strong>Counter-Current Flow:</strong> Gas rises through the bubble caps, creating a froth layer in the liquid TEG pooling on each tray.</p>
+                    <p class="text-xs text-slate-300"><strong>Absorption:</strong> TEG is highly hygroscopic. As gas bubbles through it, water molecules (white) transfer from the gas phase (blue) into the liquid TEG phase (green turning yellow/brown).</p>
+                </div>
+            </div>
+
+            <div class="xl:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[750px]">
+                <canvas id="towerCanvas" width="800" height="700" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Fluid Particle Legend</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#10b981] shadow-[0_0_5px_#10b981]"></span> Lean TEG (Pure/Dry Glycol)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#ca8a04] shadow-[0_0_5px_#ca8a04]"></span> Rich TEG (Water-saturated Glycol)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#e0f2fe] shadow-[0_0_5px_#e0f2fe]"></span> Wet Gas (Water Vapor Rich)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded-full bg-[#0284c7] shadow-[0_0_5px_#0284c7]"></span> Dry Gas (Sales Gas)</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-amber-400 font-bold">
+                        Watch White Dots (Water) transfer!
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('towerCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slGas = document.getElementById('slider-gas');
+        const slTeg = document.getElementById('slider-teg');
+        const slTemp = document.getElementById('slider-temp');
+
+        // Physics State
+        let qGas = 50; // MMscfd
+        let qTeg = 15; // gpm
+        let tInlet = 85; // F
+        let tegEff = 95; // Purity approx
+        
+        let waterContentOut = 0; // lbs/MMscf
+        let isFlooding = false;
+
+        // Visual Geometry Constants
+        const CX = canvas.width / 2;
+        const TOWER_W = 280;
+        const TOWER_H = 600;
+        const T_TOP = 50;
+        const T_BOT = T_TOP + TOWER_H;
+        
+        // Define Trays (Bubble Cap Trays)
+        const N_TRAYS = 4;
+        const TRAY_SPACING = (TOWER_H - 120) / N_TRAYS;
+        let trays = [];
+        for (let i = 0; i < N_TRAYS; i++) {
+            trays.push({
+                y: T_TOP + 80 + i * TRAY_SPACING,
+                weirSide: (i % 2 === 0) ? 'right' : 'left' // Alternating downcomers
+            });
+        }
+
+        // Particle Arrays
+        let gasParticles = [];
+        let tegParticles = [];
+
+        // --- PARTICLE CLASSES ---
+        class GasParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                this.x = CX - (TOWER_W/2) + 40 + Math.random() * (TOWER_W - 80);
+                this.y = randomize ? T_TOP + Math.random()*TOWER_H : T_BOT - 20; // Enters bottom
+                this.active = true;
+                // Incoming wet gas holds max water (1.0)
+                this.wetness = 1.0; 
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -(2 + (qGas / 50)); // Rises based on gas rate
+                this.state = 'rising'; 
+            }
+            update() {
+                if (!this.active) return;
+                
+                // Base movement
+                let currentVy = this.vy;
+                this.x += this.vx;
+
+                // Wall bouncing
+                if (this.x < CX - TOWER_W/2 + 10) { this.x = CX - TOWER_W/2 + 10; this.vx *= -1; }
+                if (this.x > CX + TOWER_W/2 - 10) { this.x = CX + TOWER_W/2 - 10; this.vx *= -1; }
+
+                // Interaction with Trays
+                let inLiquidFroth = false;
+                for (let tray of trays) {
+                    // Froth layer is above the tray
+                    if (this.y < tray.y && this.y > tray.y - 25) {
+                        inLiquidFroth = true;
+                        // Mass Transfer: Lose water to TEG
+                        // Visual efficiency scaled for canvas frame rate
+                        let lgVisualRatio = (qTeg / 15) / (qGas / 50); 
+                        let extractionRate = 0.035 * lgVisualRatio; 
+                        if (tInlet > 95) extractionRate *= 0.5; // Hot TEG absorbs much less
+                        
+                        this.wetness -= extractionRate;
+                        if (this.wetness < 0) this.wetness = 0;
+
+                        // Bubbling physics (slow down, zigzag)
+                        currentVy = this.vy * 0.4;
+                        this.x += (Math.random() - 0.5) * 4;
+                    }
+                }
+
+                this.y += currentVy;
+
+                // Exit Top
+                if (this.y < T_TOP + 10) {
+                    if (isFlooding) {
+                        // In flooding, gas escapes chaotically
+                        if (this.y < T_TOP - 20) this.reset();
+                    } else {
+                        // Normal exit through top pipe
+                        if (this.x > CX - 20 && this.x < CX + 20) {
+                            this.y -= 5;
+                            if (this.y < 0) this.reset();
+                        } else {
+                            // Guide to exit
+                            this.x += (CX - this.x) * 0.1;
+                        }
+                    }
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3.5, 0, Math.PI * 2);
+                
+                // Color maps to wetness: 1.0 = light blue/white, 0.0 = dark blue
+                let r = Math.floor(2 + this.wetness * 224);
+                let g = Math.floor(132 + this.wetness * 110);
+                let b = Math.floor(199 + this.wetness * 56);
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+
+                // Draw water molecules (white dots) inside if wet
+                if (this.wetness > 0.3) {
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(this.x - 1, this.y - 1, 1, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        class TegParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                // Enters top via distributor
+                this.x = CX + (Math.random() - 0.5) * 80;
+                this.y = randomize ? T_TOP + Math.random()*TOWER_H : T_TOP + 40; 
+                this.active = true;
+                this.waterLoad = 0.0; // 0 = Lean, 1 = Rich
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = 2 + (qTeg / 15); // Falls based on TEG rate
+                this.currentTray = -1;
+                
+                // Find starting tray if randomized
+                if (randomize) {
+                    for (let i=0; i<trays.length; i++) {
+                        if (this.y < trays[i].y) { this.currentTray = i; break; }
+                    }
+                }
+            }
+            update() {
+                if (!this.active) return;
+
+                // FLOODING LOGIC (Carry-over)
+                if (isFlooding && this.y < T_TOP + 100) {
+                    // Gas velocity too high, pushing TEG up and out!
+                    this.vy = -(2 + (qGas/50));
+                    this.y += this.vy;
+                    this.x += (Math.random() - 0.5) * 2;
+                    if (this.y < 0) this.reset(); // Lost out the gas vent
+                    return;
+                }
+
+                // Normal falling
+                if (this.currentTray === -1) {
+                    this.y += this.vy;
+                    this.x += this.vx;
+                    if (this.y > trays[0].y - 20) this.currentTray = 0;
+                } else if (this.currentTray < N_TRAYS) {
+                    let tray = trays[this.currentTray];
+                    
+                    // On the tray
+                    if (this.y < tray.y) {
+                        this.y += this.vy * 0.2; // Slow fall through froth
+                        if (this.y > tray.y - 5) this.y = tray.y - 5; // Rest on tray
+                        
+                        // Move towards downcomer (weir)
+                        let speedX = (qTeg / 10);
+                        if (tray.weirSide === 'right') {
+                            this.x += speedX;
+                            if (this.x > CX + TOWER_W/2 - 40) { // Dropping down downcomer
+                                this.currentTray++;
+                                this.y += 10; 
+                            }
+                        } else {
+                            this.x -= speedX;
+                            if (this.x < CX - TOWER_W/2 + 40) {
+                                this.currentTray++;
+                                this.y += 10;
+                            }
+                        }
+
+                        // Absorb water
+                        if (this.waterLoad < 1.0) {
+                            this.waterLoad += 0.005 + (tInlet/1000); // Hotter = faster saturation
+                        }
+
+                    } else {
+                        // Free fall to next tray
+                        this.y += this.vy * 1.5;
+                    }
+                } else {
+                    // Below bottom tray, pooling at bottom
+                    this.y += this.vy;
+                    if (this.y > T_BOT - 10) this.y = T_BOT - 10; // Rest at bottom
+                    
+                    // Exit to MRU (bottom right)
+                    if (this.y >= T_BOT - 15) {
+                        this.x += 2;
+                        if (this.x > CX + TOWER_W/2) this.reset();
+                    }
+                }
+
+                // Wall bounds
+                if (this.x < CX - TOWER_W/2 + 10) this.x = CX - TOWER_W/2 + 10;
+                if (this.x > CX + TOWER_W/2 - 10) this.x = CX + TOWER_W/2 - 10;
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3.5, 0, Math.PI * 2);
+                
+                // Color maps to water load: 0.0 = Emerald Green (Lean), 1.0 = Amber/Brown (Rich)
+                let r = Math.floor(16 + this.waterLoad * 186); // 16 to 202
+                let g = Math.floor(185 - this.waterLoad * 47); // 185 to 138
+                let b = Math.floor(129 - this.waterLoad * 125); // 129 to 4
+                
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fill();
+
+                // Draw absorbed water dots
+                if (this.waterLoad > 0.4) {
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(this.x + 1, this.y + 1, 1, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        // Initialize particles
+        for(let i=0; i<300; i++) gasParticles.push(new GasParticle());
+        for(let i=0; i<150; i++) tegParticles.push(new TegParticle());
+
+        function calculatePhysics() {
+            qGas = parseInt(slGas.value);
+            qTeg = parseInt(slTeg.value);
+            tInlet = parseInt(slTemp.value);
+
+            document.getElementById('val-gas').innerText = qGas + " MMscfd";
+            document.getElementById('val-teg').innerText = qTeg + " gal/min";
+            document.getElementById('val-temp').innerText = tInlet + " °F";
+
+            // Theoretical Inlet Water Content (McCarthy-Campbell approx)
+            let inletWater = 15 * Math.exp((tInlet - 60) * 0.035);
+
+            // Dehydration Efficiency based on L/G ratio
+            let waterToLoad = (qGas * inletWater) / 24 / 60; // lbs water per min
+            let tegRatio = qTeg / Math.max(1, waterToLoad); // gal TEG per lb water
+            
+            let tegPurity = 98.0 + (tegEff * 0.2); 
+            
+            let removalEfficiency = 0;
+            if (tegRatio > 3) removalEfficiency = 0.99 * (tegPurity/100);
+            else if (tegRatio > 1) removalEfficiency = 0.90 * (tegPurity/100);
+            else removalEfficiency = 0.50 * (tegPurity/100);
+
+            waterContentOut = inletWater * (1 - removalEfficiency);
+            
+            // Flooding Check (Excessive gas velocity blowing TEG out the top)
+            isFlooding = qGas > 100;
+
+            // Dew Point Approx (inverse McCarthy-Campbell)
+            let dewPoint = 60 + (Math.log(waterContentOut / 15) / 0.035);
+            if (dewPoint < -40) dewPoint = -40; // Floor
+
+            // Update UI
+            let elWC = document.getElementById('val-water-content');
+            let elDP = document.getElementById('val-dew-point');
+            let statusBox = document.getElementById('status-box');
+
+            elWC.innerText = waterContentOut.toFixed(1);
+            elDP.innerText = dewPoint.toFixed(0) + " °F";
+
+            if (isFlooding) {
+                elWC.className = "text-xl font-bold text-red-500 animate-pulse";
+                elDP.className = "text-xl font-bold text-red-500";
+                statusBox.className = "bg-red-900/40 border border-red-500 p-3 rounded-lg text-red-200 text-xs font-semibold leading-relaxed text-center transition-all shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+                statusBox.innerHTML = "🚨 TOWER FLOODING (CARRY-OVER)! <br><span class='text-red-300 font-normal mt-1 block'>Gas velocity too high! TEG is being blown out the top. Massive liquid carry-over into sales gas line.</span>";
+            } else if (waterContentOut > 7.0) {
+                elWC.className = "text-xl font-bold text-amber-500 animate-pulse";
+                elDP.className = "text-xl font-bold text-amber-400";
+                statusBox.className = "bg-amber-900/40 border border-amber-500 p-3 rounded-lg text-amber-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                let reason = tInlet > 100 ? "Inlet gas is too hot." : "Not enough TEG circulation.";
+                statusBox.innerHTML = `⚠️ OFF-SPEC GAS (HIGH DEW POINT) <br><span class='text-amber-100 font-normal mt-1 block'>Water content exceeds 7.0 lbs limit. Hydrate risk in export pipeline. ${reason}</span>`;
+            } else {
+                elWC.className = "text-xl font-bold text-white";
+                elDP.className = "text-xl font-bold text-sky-300";
+                statusBox.className = "bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-emerald-200 text-xs font-semibold leading-relaxed text-center transition-all";
+                statusBox.innerHTML = "✅ PIPELINE SPEC MET (< 7.0 lbs/MMscf) <br><span class='text-emerald-100 font-normal mt-1 block'>Optimal Mass Transfer. Sales gas is dry and safe for export.</span>";
+            }
+        }
+
+        function drawTower() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Piping Connections
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(CX - 20, T_TOP - 40, 40, 60); // Gas Outlet (Top)
+            ctx.fillRect(CX - TOWER_W/2 - 60, T_BOT - 60, 60, 40); // Gas Inlet (Bottom Left)
+            ctx.fillRect(CX + TOWER_W/2, T_BOT - 30, 60, 20); // Rich TEG Outlet (Bottom Right)
+            ctx.fillRect(CX - 100, T_TOP + 20, 100, 20); // Lean TEG Inlet (Top Left)
+
+            // Tower Body
+            ctx.fillStyle = '#64748b'; // Metal Shell
+            ctx.beginPath();
+            ctx.roundRect(CX - TOWER_W/2, T_TOP, TOWER_W, TOWER_H, 20);
+            ctx.fill();
+
+            // Internal Void
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(CX - TOWER_W/2 + 10, T_TOP + 10, TOWER_W - 20, TOWER_H - 20, 10);
+            ctx.fill();
+
+            // Draw Trays (Bubble Cap)
+            for (let i = 0; i < N_TRAYS; i++) {
+                let tray = trays[i];
+                ctx.fillStyle = '#475569'; // Steel tray
+                
+                if (tray.weirSide === 'right') {
+                    // Tray attached left, weir on right
+                    ctx.fillRect(CX - TOWER_W/2 + 10, tray.y, TOWER_W - 40, 5);
+                    // Weir plate
+                    ctx.fillRect(CX + TOWER_W/2 - 30, tray.y - 15, 5, 20);
+                    // Downcomer baffle
+                    ctx.fillRect(CX + TOWER_W/2 - 50, tray.y + 5, 5, TRAY_SPACING - 20);
+                } else {
+                    // Tray attached right, weir on left
+                    ctx.fillRect(CX - TOWER_W/2 + 30, tray.y, TOWER_W - 40, 5);
+                    ctx.fillRect(CX - TOWER_W/2 + 25, tray.y - 15, 5, 20);
+                    ctx.fillRect(CX - TOWER_W/2 + 45, tray.y + 5, 5, TRAY_SPACING - 20);
+                }
+
+                // Bubble Caps (Small hats on the tray)
+                ctx.fillStyle = '#94a3b8';
+                for (let bx = CX - TOWER_W/2 + 60; bx < CX + TOWER_W/2 - 60; bx += 30) {
+                    // Chimney
+                    ctx.fillRect(bx - 3, tray.y - 10, 6, 10);
+                    // Cap
+                    ctx.beginPath(); ctx.arc(bx, tray.y - 10, 8, Math.PI, 0); ctx.fill();
+                }
+
+                // Visual Liquid Froth Level (Static representation beneath particles)
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.15)'; // faint green tint
+                if (tray.weirSide === 'right') {
+                    ctx.fillRect(CX - TOWER_W/2 + 10, tray.y - 20, TOWER_W - 40, 20);
+                } else {
+                    ctx.fillRect(CX - TOWER_W/2 + 30, tray.y - 20, TOWER_W - 40, 20);
+                }
+            }
+
+            // Bottom Liquid Pool
+            ctx.fillStyle = 'rgba(202, 138, 4, 0.3)'; // Dark amber Rich TEG
+            ctx.fillRect(CX - TOWER_W/2 + 10, T_BOT - 40, TOWER_W - 20, 30);
+
+            // Labels
+            ctx.fillStyle = '#fff'; ctx.font = '12px Arial font-bold';
+            ctx.fillText("WET GAS IN", CX - TOWER_W/2 - 130, T_BOT - 35);
+            ctx.fillText("DRY GAS OUT", CX + 25, T_TOP - 20);
+            ctx.fillText("LEAN TEG IN", CX - 190, T_TOP + 35);
+            ctx.fillText("RICH TEG OUT", CX + TOWER_W/2 + 65, T_BOT - 15);
+            
+            ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.font = '24px Arial font-bold'; ctx.textAlign="center";
+            ctx.fillText("CONTACTOR TOWER", CX, T_TOP + 50); ctx.textAlign="left"; // reset
+        }
+
+        function animate() {
+            calculatePhysics();
+            drawTower();
+
+            // Adjust active particle counts based on flow rates
+            let targetGas = Math.floor(qGas * 4);
+            let targetTeg = Math.floor(qTeg * 10);
+            
+            // Add or flag gas particles
+            if (gasParticles.length < targetGas) {
+                gasParticles.push(new GasParticle());
+            } else if (gasParticles.length > targetGas) {
+                gasParticles[0].active = false;
+            }
+
+            // Add or flag teg particles
+            if (tegParticles.length < targetTeg) {
+                tegParticles.push(new TegParticle());
+            } else if (tegParticles.length > targetTeg) {
+                tegParticles[0].active = false;
+            }
+
+            // Update & Draw
+            gasParticles.forEach(p => { p.update(); p.draw(); });
+            tegParticles.forEach(p => { p.update(); p.draw(); });
+            
+            // Clean dead particles
+            gasParticles = gasParticles.filter(p => p.active);
+            tegParticles = tegParticles.filter(p => p.active);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Listeners & Init
+        slGas.addEventListener('input', calculatePhysics);
+        slTeg.addEventListener('input', calculatePhysics);
+        slTemp.addEventListener('input', calculatePhysics);
+        
+        calculatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

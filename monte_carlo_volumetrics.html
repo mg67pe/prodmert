@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monte Carlo Volumetrics & Uncertainty</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .param-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; align-items: center; }
+        input[type=number] { background-color: #334155; border: 1px solid #475569; color: #f8fafc; border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 0.875rem; width: 100%; text-align: center; }
+        input[type=number]:focus { outline: none; border-color: #38bdf8; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-6xl w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-emerald-400 mb-2">Volumetric Estimation under Uncertainty</h1>
+            <p class="text-slate-400 text-sm">Monte Carlo Simulation for STOOIP (Stock Tank Original Oil In Place)</p>
+            <p class="text-xs text-slate-500 mt-2 font-mono">Formula: STOOIP = 7758 × A × h × φ × (1 - Sw) / Bo</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Input Parameters -->
+            <div class="lg:col-span-5 bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl flex flex-col gap-4">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-600 pb-2">Uncertainty Ranges (Uniform Dist.)</h2>
+                
+                <div class="flex flex-col gap-4 mt-2">
+                    <!-- Area -->
+                    <div>
+                        <div class="text-xs font-bold text-sky-400 mb-1">Area (A) - Acres</div>
+                        <div class="param-grid">
+                            <span class="text-[10px] text-slate-500 text-right pr-2">MIN:</span>
+                            <input type="number" id="a-min" value="800">
+                            <input type="number" id="a-max" value="1200">
+                        </div>
+                    </div>
+                    <!-- Net Pay -->
+                    <div>
+                        <div class="text-xs font-bold text-amber-400 mb-1">Net Pay (h) - ft</div>
+                        <div class="param-grid">
+                            <span class="text-[10px] text-slate-500 text-right pr-2">MIN:</span>
+                            <input type="number" id="h-min" value="40">
+                            <input type="number" id="h-max" value="60">
+                        </div>
+                    </div>
+                    <!-- Porosity -->
+                    <div>
+                        <div class="text-xs font-bold text-fuchsia-400 mb-1">Porosity (φ) - Fraction</div>
+                        <div class="param-grid">
+                            <span class="text-[10px] text-slate-500 text-right pr-2">MIN:</span>
+                            <input type="number" id="phi-min" value="0.12" step="0.01">
+                            <input type="number" id="phi-max" value="0.18" step="0.01">
+                        </div>
+                    </div>
+                    <!-- Sw -->
+                    <div>
+                        <div class="text-xs font-bold text-blue-400 mb-1">Water Saturation (Sw) - Fraction</div>
+                        <div class="param-grid">
+                            <span class="text-[10px] text-slate-500 text-right pr-2">MIN:</span>
+                            <input type="number" id="sw-min" value="0.25" step="0.01">
+                            <input type="number" id="sw-max" value="0.40" step="0.01">
+                        </div>
+                    </div>
+                    <!-- Bo -->
+                    <div>
+                        <div class="text-xs font-bold text-emerald-400 mb-1">FVF (Bo) - rb/stb</div>
+                        <div class="param-grid">
+                            <span class="text-[10px] text-slate-500 text-right pr-2">MIN:</span>
+                            <input type="number" id="bo-min" value="1.15" step="0.01">
+                            <input type="number" id="bo-max" value="1.25" step="0.01">
+                        </div>
+                    </div>
+                </div>
+
+                <button onclick="runSimulation()" class="w-full mt-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-lg transition transform active:scale-95 border border-emerald-400">
+                    ▶ RUN 5000 ITERATIONS
+                </button>
+            </div>
+
+            <!-- Right Panel: Results & Histogram -->
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="bg-slate-900 border border-emerald-500/50 p-4 rounded-xl text-center shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                        <div class="text-[10px] text-emerald-400 uppercase tracking-wider mb-1 font-bold">P90 (Proved)</div>
+                        <div id="val-p90" class="text-xl font-bold text-white">0 MMSTB</div>
+                        <div class="text-[9px] text-slate-500 mt-1">90% chance to exceed</div>
+                    </div>
+                    <div class="bg-slate-900 border border-amber-500/50 p-4 rounded-xl text-center shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                        <div class="text-[10px] text-amber-400 uppercase tracking-wider mb-1 font-bold">P50 (Probable)</div>
+                        <div id="val-p50" class="text-2xl font-bold text-white">0 MMSTB</div>
+                        <div class="text-[9px] text-slate-500 mt-1">Best Estimate</div>
+                    </div>
+                    <div class="bg-slate-900 border border-red-500/50 p-4 rounded-xl text-center shadow-[0_0_15px_rgba(239,68,68,0.2)]">
+                        <div class="text-[10px] text-red-400 uppercase tracking-wider mb-1 font-bold">P10 (Possible)</div>
+                        <div id="val-p10" class="text-xl font-bold text-white">0 MMSTB</div>
+                        <div class="text-[9px] text-slate-500 mt-1">10% chance to exceed</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 h-[400px]">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-600 pb-1">STOOIP Probability Distribution</h3>
+                    <canvas id="histCanvas" width="600" height="320" class="w-full h-full object-contain"></canvas>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('histCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function getRandomUniform(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function runSimulation() {
+            const iterations = 5000;
+            let results = [];
+
+            const aMin = parseFloat(document.getElementById('a-min').value);
+            const aMax = parseFloat(document.getElementById('a-max').value);
+            const hMin = parseFloat(document.getElementById('h-min').value);
+            const hMax = parseFloat(document.getElementById('h-max').value);
+            const phiMin = parseFloat(document.getElementById('phi-min').value);
+            const phiMax = parseFloat(document.getElementById('phi-max').value);
+            const swMin = parseFloat(document.getElementById('sw-min').value);
+            const swMax = parseFloat(document.getElementById('sw-max').value);
+            const boMin = parseFloat(document.getElementById('bo-min').value);
+            const boMax = parseFloat(document.getElementById('bo-max').value);
+
+            for (let i = 0; i < iterations; i++) {
+                let A = getRandomUniform(aMin, aMax);
+                let h = getRandomUniform(hMin, hMax);
+                let phi = getRandomUniform(phiMin, phiMax);
+                let sw = getRandomUniform(swMin, swMax);
+                let bo = getRandomUniform(boMin, boMax);
+
+                let stooip = (7758 * A * h * phi * (1 - sw)) / bo; 
+                stooip = stooip / 1000000;
+                results.push(stooip);
+            }
+
+            results.sort((a, b) => a - b);
+
+            const p90Index = Math.floor(iterations * 0.10);
+            const p50Index = Math.floor(iterations * 0.50);
+            const p10Index = Math.floor(iterations * 0.90);
+
+            const p90 = results[p90Index];
+            const p50 = results[p50Index];
+            const p10 = results[p10Index];
+
+            document.getElementById('val-p90').innerText = p90.toFixed(2) + " MMSTB";
+            document.getElementById('val-p50').innerText = p50.toFixed(2) + " MMSTB";
+            document.getElementById('val-p10').innerText = p10.toFixed(2) + " MMSTB";
+
+            drawHistogram(results, p90, p50, p10);
+        }
+
+        function drawHistogram(data, p90, p50, p10) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const numBins = 40;
+            const minVal = data[0];
+            const maxVal = data[data.length - 1];
+            
+            if (minVal === maxVal) return; // Prevent division by zero if all inputs are fixed
+
+            const binWidth = (maxVal - minVal) / numBins;
+            let bins = new Array(numBins).fill(0);
+            
+            data.forEach(val => {
+                let binIndex = Math.floor((val - minVal) / binWidth);
+                if (binIndex >= numBins) binIndex = numBins - 1;
+                if (binIndex < 0) binIndex = 0;
+                bins[binIndex]++;
+            });
+
+            const maxBinCount = Math.max(...bins);
+            const chartHeight = canvas.height - 40;
+            const chartWidth = canvas.width - 40;
+            const barWidth = chartWidth / numBins;
+
+            bins.forEach((count, i) => {
+                let barHeight = (count / maxBinCount) * chartHeight;
+                let x = 20 + i * barWidth;
+                let y = canvas.height - 20 - barHeight;
+
+                let currentVal = minVal + i * binWidth;
+                if (currentVal < p90) ctx.fillStyle = 'rgba(16, 185, 129, 0.4)'; 
+                else if (currentVal > p10) ctx.fillStyle = 'rgba(239, 68, 68, 0.4)'; 
+                else ctx.fillStyle = 'rgba(245, 158, 11, 0.6)'; 
+
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+
+            function drawPLine(val, label, color) {
+                let x = 20 + ((val - minVal) / (maxVal - minVal)) * chartWidth;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(x, 20);
+                ctx.lineTo(x, canvas.height - 20);
+                ctx.stroke();
+                
+                ctx.fillStyle = color;
+                ctx.font = "bold 12px Arial";
+                ctx.fillText(label, x - 10, 15);
+            }
+
+            drawPLine(p90, "P90", "#10b981");
+            drawPLine(p50, "P50", "#f59e0b");
+            drawPLine(p10, "P10", "#ef4444");
+
+            ctx.strokeStyle = '#64748b';
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(20, canvas.height - 20);
+            ctx.lineTo(canvas.width - 20, canvas.height - 20);
+            ctx.stroke();
+        }
+
+        // Add event listeners to run simulation immediately when a value changes
+        document.querySelectorAll('input[type=number]').forEach(input => {
+            input.addEventListener('change', runSimulation);
+        });
+
+        // Ensure canvas scaling is correct on load
+        window.addEventListener('resize', runSimulation);
+        
+        // Initial run
+        setTimeout(runSimulation, 100); 
+    </script>
+</body>
+</html>

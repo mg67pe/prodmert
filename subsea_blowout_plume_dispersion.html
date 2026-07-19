@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea Blowout & BOP Intervention Hierarchy</title>
+    <style>
+        :root {
+            --bg-color: #050a15;
+            --panel-bg: #0f172a;
+            --text-main: #38bdf8;
+            --text-muted: #94a3b8;
+            --alert-red: #ef4444;
+            --warning-orange: #f59e0b;
+            --safe-green: #10b981;
+            --rov-yellow: #facc15;
+            --mux-blue: #3b82f6;
+        }
+
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: var(--alert-red);
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            background: linear-gradient(to bottom, #001d3d 0%, #000814 100%);
+            border-radius: 4px;
+        }
+
+        .control-panel {
+            width: 340px;
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .dashboard {
+            background: rgba(0,0,0,0.5);
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid var(--text-main);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .alert-box {
+            padding: 8px;
+            border-radius: 4px;
+            background-color: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--alert-red);
+            color: var(--alert-red);
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+        }
+
+        .hierarchy-section {
+            border: 1px solid #334155;
+            padding: 10px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .hierarchy-title {
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 5px;
+        }
+
+        .btn {
+            width: 100%;
+            background-color: #334155;
+            color: #fff;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 11px;
+            transition: all 0.2s;
+            margin-bottom: 8px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary-eds { background-color: var(--mux-blue); }
+        .btn-primary-eds:hover { background-color: #2563eb; }
+
+        .btn-hazard { background-color: #7f1d1d; border: 1px solid var(--alert-red); }
+        .btn-hazard:hover { background-color: #991b1b; }
+
+        .btn-acoustic { background-color: #065f46; border: 1px solid var(--safe-green); }
+        .btn-acoustic:hover { background-color: #047857; }
+
+        .btn-rov { background-color: var(--warning-orange); color: #000; }
+        .btn-rov:hover { background-color: #d97706; }
+
+        label {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--text-main);
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>BOP Intervention Hierarchy Simulator</h1>
+        <p>4-STAGE BLOWOUT CRISIS MANAGEMENT | MACONDO SCENARIO</p>
+    </div>
+
+    <div class="container">
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="800" height="600"></canvas>
+        </div>
+
+        <div class="control-panel">
+            <div class="dashboard">
+                <div class="stat-row">
+                    <span>Well Status:</span>
+                    <span class="stat-value" id="wellStatus" style="color:var(--alert-red)">BLOWING (150 MMscfd)</span>
+                </div>
+                <div class="stat-row">
+                    <span>MUX Umbilical:</span>
+                    <span class="stat-value" id="muxStatus" style="color:var(--mux-blue)">INTACT</span>
+                </div>
+                <div class="stat-row">
+                    <span>Plume Radius:</span>
+                    <span class="stat-value" id="radiusVal">0 m</span>
+                </div>
+                <div class="stat-row">
+                    <span>Water Density:</span>
+                    <span class="stat-value" id="densityVal">1025 kg/m³</span>
+                </div>
+                <div id="vesselAlert" class="alert-box">
+                    ⚠️ VESSEL BUOYANCY LOST! SINKING RISK!
+                </div>
+            </div>
+
+            <div class="hierarchy-section">
+                <div class="hierarchy-title">[1] PRIMARY INTERVENTION</div>
+                <button class="btn btn-primary-eds" id="btnEds">TRIGGER E.D.S. (SURFACE)</button>
+                <label style="font-size:9px;">Uses MUX cable to close Blind Shear Rams (~45s)</label>
+            </div>
+
+            <div class="hierarchy-section">
+                <div class="hierarchy-title">[2] SECONDARY (AUTO) INTERVENTION</div>
+                <label style="margin-bottom:8px;">
+                    <input type="checkbox" id="chkDeadman" checked> Deadman/Autoshear System Armed
+                </label>
+                <button class="btn btn-hazard" id="btnCutUmbilical">HAZARD: SEVER MUX UMBILICAL</button>
+                <label style="font-size:9px;">Simulates explosion breaking comms to BOP.</label>
+            </div>
+
+            <div class="hierarchy-section">
+                <div class="hierarchy-title">[3] TERTIARY INTERVENTION</div>
+                <button class="btn btn-acoustic" id="btnAcoustic">SEND ACOUSTIC SONAR COMMAND</button>
+                <label style="font-size:9px;">Uses sound waves if cable is cut.</label>
+            </div>
+
+            <div class="hierarchy-section">
+                <div class="hierarchy-title">[4] LAST RESORT</div>
+                <button class="btn btn-rov" id="btnRov">DEPLOY ROV (MANUAL OVERRIDE)</button>
+                <label style="font-size:9px;">Physical intervention via hot-stab panel.</label>
+            </div>
+
+            <div class="hierarchy-section" style="margin-top: 10px;">
+                <label>Ocean Current Velocity (m/s)</label>
+                <input type="range" id="currentSlider" min="-2.0" max="2.0" step="0.1" value="0.5">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI
+        const wellStatus = document.getElementById('wellStatus');
+        const muxStatus = document.getElementById('muxStatus');
+        const radiusVal = document.getElementById('radiusVal');
+        const densityVal = document.getElementById('densityVal');
+        const vesselAlert = document.getElementById('vesselAlert');
+        
+        const btnEds = document.getElementById('btnEds');
+        const btnCutUmbilical = document.getElementById('btnCutUmbilical');
+        const chkDeadman = document.getElementById('chkDeadman');
+        const btnAcoustic = document.getElementById('btnAcoustic');
+        const btnRov = document.getElementById('btnRov');
+        const currentSlider = document.getElementById('currentSlider');
+
+        // State
+        let isBlowing = true;
+        let blowoutRate = 150;
+        let oceanCurrent = 0.5;
+        let umbilicalIntact = true;
+        
+        const BOP_X = 400;
+        const BOP_Y = 560; // Seabed
+        
+        let bubbles = [];
+        let particlesToSpawn = 0;
+        let sonarWaves = [];
+        let edsProgress = null; // 0.0'dan 1.0'a kadar curve ilerlemesi
+
+        // ROV State
+        const rov = {
+            active: false,
+            x: 700,
+            y: 50,
+            targetX: BOP_X + 40,
+            targetY: BOP_Y - 20,
+            speed: 1.5,
+            state: 'STANDBY'
+        };
+
+        class Bubble {
+            constructor(x, y, rate) {
+                this.x = x + (Math.random() - 0.5) * 20;
+                this.y = y;
+                this.baseRadius = Math.random() * 3 + 2;
+                this.radius = this.baseRadius;
+                this.vy = -(Math.random() * 3 + 2) - (rate / 80);
+                this.vx = (Math.random() - 0.5) * 2.0;
+                this.alpha = Math.random() * 0.4 + 0.3;
+            }
+            update(current) {
+                this.y += this.vy;
+                let currentProfile = current * ((BOP_Y - this.y) / BOP_Y);
+                this.x += this.vx + currentProfile;
+                let depthFactor = this.y / BOP_Y;
+                this.radius = this.baseRadius * (1 + (1 - depthFactor) * 12); 
+                this.vx += (Math.random() - 0.5) * 0.5;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                let currentAlpha = this.alpha * (0.4 + 0.6 * (this.y / BOP_Y));
+                ctx.fillStyle = `rgba(150, 210, 255, ${currentAlpha})`;
+                ctx.fill();
+            }
+        }
+
+        function drawSeabedAndBOP() {
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, BOP_Y, canvas.width, canvas.height - BOP_Y);
+
+            // BOP Stack
+            ctx.fillStyle = isBlowing ? '#facc15' : 'var(--safe-green)'; 
+            ctx.fillRect(BOP_X - 30, BOP_Y - 60, 60, 60);
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(BOP_X - 35, BOP_Y - 20, 70, 10);
+            
+            // Shear Rams (Açık/Kapalı)
+            ctx.fillStyle = isBlowing ? '#334155' : 'var(--safe-green)';
+            ctx.fillRect(BOP_X - 35, BOP_Y - 45, 70, 15);
+            
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(BOP_X - 15, BOP_Y, 30, 40);
+        }
+
+        function drawSurfaceVessel(shipX) {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.beginPath();
+            ctx.moveTo(shipX - 60, 20);
+            ctx.lineTo(shipX + 60, 20);
+            ctx.lineTo(shipX + 40, 40);
+            ctx.lineTo(shipX - 40, 40);
+            ctx.fill();
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(shipX - 5, 0, 10, 20);
+            
+            // MUX Umbilical Connection Point
+            ctx.fillStyle = 'var(--mux-blue)';
+            ctx.beginPath();
+            ctx.arc(shipX + 20, 40, 4, 0, Math.PI*2);
+            ctx.fill();
+            return shipX;
+        }
+
+        function drawUmbilical(shipX) {
+            // Curve Koordinatları (P0: Başlangıç, P1: Kontrol Noktası, P2: Bitiş)
+            let startX = shipX + 20;
+            let startY = 40;
+            let cpX = BOP_X + 100;
+            let cpY = 300;
+            let endX = BOP_X + 20;
+            let endY = BOP_Y - 40;
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            
+            if (umbilicalIntact) {
+                // Sağlam kablo
+                ctx.quadraticCurveTo(cpX, cpY, endX, endY);
+                ctx.strokeStyle = 'var(--mux-blue)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // EDS Sinyal Animasyonu (Quadratic Bezier Interpolation)
+                if (edsProgress !== null) {
+                    let t = edsProgress;
+                    let u = 1 - t;
+                    let tt = t * t;
+                    let uu = u * u;
+                    
+                    // Sinyalin Curve üzerindeki anlık X ve Y noktası formülü
+                    let signalX = uu * startX + 2 * u * t * cpX + tt * endX;
+                    let signalY = uu * startY + 2 * u * t * cpY + tt * endY;
+
+                    ctx.beginPath();
+                    ctx.arc(signalX, signalY, 6, 0, Math.PI*2);
+                    ctx.fillStyle = '#fff';
+                    // Sinyale Mavi Işık Efekti
+                    ctx.shadowColor = 'var(--mux-blue)';
+                    ctx.shadowBlur = 15;
+                    ctx.fill();
+                    ctx.shadowBlur = 0; // Diğer çizimleri etkilemesin diye sıfırla
+
+                    edsProgress += 0.015; // Sinyal hızı
+
+                    if (edsProgress >= 1) {
+                        killWell("EDS SYSTEM");
+                        edsProgress = null; // Animasyonu bitir
+                    }
+                }
+            } else {
+                // Kopuk kablo
+                ctx.quadraticCurveTo(shipX + 40, 150, shipX + 30, 200); // Üst parça
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.moveTo(BOP_X + 50, BOP_Y - 200);
+                ctx.quadraticCurveTo(BOP_X + 40, BOP_Y - 100, BOP_X + 20, BOP_Y - 40); // Alt parça
+                ctx.stroke();
+                
+                // Kopan uçta kıvılcımlar
+                if(Math.random() > 0.5) {
+                    ctx.fillStyle = '#facc15';
+                    ctx.fillRect(shipX + 30 + (Math.random()*10-5), 200 + (Math.random()*10-5), 3, 3);
+                }
+            }
+        }
+
+        function drawAcousticWaves() {
+            for (let i = sonarWaves.length - 1; i >= 0; i--) {
+                let wave = sonarWaves[i];
+                ctx.beginPath();
+                ctx.arc(wave.x, wave.y, wave.r, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(16, 185, 129, ${1 - (wave.r/800)})`; // Safe green, fading
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                wave.r += 6;
+                wave.y += 2; // Yönelim aşağı
+
+                if (wave.y + wave.r > BOP_Y) {
+                    killWell("ACOUSTIC CONTROL");
+                    sonarWaves.splice(i, 1);
+                }
+            }
+        }
+
+        function drawROV() {
+            if (!rov.active) return;
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(rov.x - 15, rov.y - 10, 30, 20);
+            ctx.fillStyle = '#333';
+            ctx.fillRect(rov.x - 20, rov.y - 5, 5, 10);
+            ctx.fillRect(rov.x + 15, rov.y - 5, 5, 10);
+            ctx.beginPath();
+            ctx.moveTo(rov.x - 10, rov.y + 10);
+            ctx.lineTo(rov.x - 30, rov.y + 60);
+            ctx.lineTo(rov.x + 10, rov.y + 60);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fill();
+        }
+
+        function updateROV() {
+            if (!rov.active) return;
+            if (rov.state === 'DESCENDING') {
+                let dx = rov.targetX - rov.x;
+                let dy = rov.targetY - rov.y;
+                let distance = Math.sqrt(dx*dx + dy*dy);
+
+                if (distance > 2) {
+                    rov.x += (dx / distance) * rov.speed + (oceanCurrent * 0.3);
+                    rov.y += (dy / distance) * rov.speed;
+                } else {
+                    rov.state = 'AT BOP';
+                    killWell("ROV MANUAL OVERRIDE");
+                }
+            }
+        }
+
+        function calculateSurfaceConditions() {
+            let surfaceBubbles = bubbles.filter(b => b.y < 50);
+            let minX = 800, maxX = 0;
+            surfaceBubbles.forEach(b => {
+                if (b.x < minX) minX = b.x;
+                if (b.x > maxX) maxX = b.x;
+            });
+
+            let plumeWidth = 0;
+            let density = 1025;
+
+            if (surfaceBubbles.length > 5 && isBlowing) {
+                plumeWidth = (maxX - minX);
+                density = 1025 - ((blowoutRate / 300) * 350); 
+            }
+
+            radiusVal.innerText = (plumeWidth / 2).toFixed(1) + " m";
+            densityVal.innerText = density.toFixed(0) + " kg/m³";
+
+            if (density < 850) {
+                densityVal.style.color = 'var(--alert-red)';
+                vesselAlert.style.display = 'block';
+            } else {
+                densityVal.style.color = '#fff';
+                vesselAlert.style.display = 'none';
+            }
+            
+            if (plumeWidth > 10) {
+                ctx.beginPath();
+                ctx.ellipse(minX + (plumeWidth/2), 20, plumeWidth/2, 5, 0, 0, Math.PI*2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.fill();
+            }
+        }
+
+        function killWell(method) {
+            if(!isBlowing) return;
+            isBlowing = false;
+            blowoutRate = 0;
+            wellStatus.innerText = `KILLED VIA ${method}`;
+            wellStatus.style.color = 'var(--safe-green)';
+            
+            // Disable all intervention buttons
+            btnEds.disabled = true;
+            btnCutUmbilical.disabled = true;
+            btnAcoustic.disabled = true;
+            btnRov.disabled = true;
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (isBlowing && blowoutRate > 0) {
+                particlesToSpawn += blowoutRate / 15; 
+                while (particlesToSpawn >= 1) {
+                    bubbles.push(new Bubble(BOP_X, BOP_Y - 60, blowoutRate));
+                    particlesToSpawn--;
+                }
+            }
+
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                let b = bubbles[i];
+                b.update(oceanCurrent);
+                b.draw();
+                if (b.y < -20) bubbles.splice(i, 1);
+            }
+
+            drawSeabedAndBOP();
+            let shipX = 400; // Static ship for simplicity in hierarchy sim
+            drawUmbilical(shipX);
+            drawSurfaceVessel(shipX);
+            drawAcousticWaves();
+            
+            calculateSurfaceConditions();
+            
+            updateROV();
+            drawROV();
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- BUTTON LOGICS ---
+
+        // 1. EDS Button
+        btnEds.addEventListener('click', () => {
+            if (umbilicalIntact && isBlowing) {
+                edsProgress = 0; // Sinyal animasyonunu başlat (Curve t parametresi 0'dan başlar)
+                btnEds.innerText = "EDS SIGNAL SENT...";
+                btnEds.disabled = true;
+            } else {
+                alert("MUX CABLE IS SEVERED! EDS COMMAND FAILED.");
+            }
+        });
+
+        // 2. Cut Umbilical (Hazard) & Deadman
+        btnCutUmbilical.addEventListener('click', () => {
+            if(!umbilicalIntact) return;
+            umbilicalIntact = false;
+            muxStatus.innerText = "SEVERED (COMMS LOST)";
+            muxStatus.style.color = 'var(--alert-red)';
+            btnCutUmbilical.disabled = true;
+            btnEds.disabled = true;
+            btnEds.innerText = "EDS UNAVAILABLE";
+
+            if (chkDeadman.checked && isBlowing) {
+                // Deadman armed -> Auto kill
+                setTimeout(() => {
+                    killWell("DEADMAN AUTOSHEAR");
+                }, 1500); // Short delay for realism
+            } else {
+                alert("DEADMAN DISARMED! BOP FAILED TO CLOSE AUTOMATICALLY.");
+            }
+        });
+
+        // 3. Acoustic Command
+        btnAcoustic.addEventListener('click', () => {
+            if (isBlowing) {
+                sonarWaves.push({x: 400, y: 40, r: 10});
+                btnAcoustic.innerText = "SONAR PINGING...";
+                btnAcoustic.disabled = true;
+                setTimeout(() => { btnAcoustic.disabled = false; btnAcoustic.innerText = "SEND ACOUSTIC SONAR COMMAND"; }, 2000);
+            }
+        });
+
+        // 4. ROV Deploy
+        btnRov.addEventListener('click', () => {
+            if (isBlowing && !rov.active) {
+                rov.active = true;
+                rov.state = 'DESCENDING';
+                btnRov.innerText = "ROV DESCENDING...";
+                btnRov.disabled = true;
+            }
+        });
+
+        currentSlider.addEventListener('input', (e) => {
+            oceanCurrent = parseFloat(e.target.value);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

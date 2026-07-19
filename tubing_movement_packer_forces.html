@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tubing Movement & Packer Forces Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        .btn-action { transition: all 0.2s ease; }
+        .btn-action:active:not(:disabled) { transform: scale(0.95); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-red-400 mb-2">Well Integrity: Tubing Movement & Packer Forces</h1>
+            <p class="text-slate-400 text-sm">Thermodynamic Expansion, Ballooning, and Piston Effects in High-Rate Gas Wells</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Scenarios -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">Well Operations</h2>
+                    
+                    <div class="flex gap-2 w-full mb-4">
+                        <button onclick="setScenario('shut_in')" id="btn-shutin" class="btn-action flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold border border-slate-500 text-xs shadow-inner">
+                            Static (Shut-in)
+                        </button>
+                        <button onclick="setScenario('producing')" id="btn-prod" class="btn-action flex-1 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold border border-red-500 text-xs shadow-lg">
+                            High Rate Production
+                        </button>
+                        <button onclick="setScenario('stimulating')" id="btn-stim" class="btn-action flex-1 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold border border-sky-500 text-xs shadow-lg">
+                            Cold Acid Injection
+                        </button>
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="slider-label text-amber-400"><span title="Average Tubing Temperature">Avg. Tubing Temp ($T_{avg}$)</span> <span id="val-temp" class="font-mono">100 °F</span></div>
+                        <input type="range" id="slider-temp" min="40" max="250" step="5" value="100" style="accent-color: #f59e0b;" disabled>
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700 mt-1">
+                            Temperature changes cause thermal elongation or contraction.
+                        </div>
+                    </div>
+
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-blue-400"><span title="Internal Tubing Pressure">Internal Pressure ($P_i$)</span> <span id="val-pi" class="font-mono">2000 psi</span></div>
+                        <input type="range" id="slider-pi" min="500" max="10000" step="100" value="2000" style="accent-color: #3b82f6;" disabled>
+                        <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-700 mt-1">
+                            High internal pressure causes 'Ballooning' (swelling), shortening the tubing.
+                        </div>
+                    </div>
+
+                    <div class="mb-2 mt-4">
+                        <div class="slider-label text-emerald-400"><span title="Packer Configuration">Packer Type</span> <span id="val-packer" class="font-mono text-xs">Fixed</span></div>
+                        <select id="select-packer" class="w-full bg-slate-900 border border-slate-600 text-slate-200 text-sm rounded p-2 outline-none mt-1" onchange="updatePhysics()">
+                            <option value="fixed">Fixed Packer (No Movement)</option>
+                            <option value="slip_joint">Slip Joint / PBR (Allows Movement)</option>
+                        </select>
+                        <div class="text-[10px] text-slate-400 mt-1">
+                            Fixed packers convert movement potential into massive axial stress.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col gap-3 flex-1">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-700 pb-2">Stress & Force Telemetry</h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg relative overflow-hidden">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1 z-10 relative">Tubing Movement ($\Delta L$)</div>
+                            <div id="val-dl" class="text-xl font-bold text-sky-400 z-10 relative">0.0 ft</div>
+                            <div class="text-[9px] text-slate-500 z-10 relative" id="lbl-dl">At free end</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg relative overflow-hidden" id="box-force">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1 z-10 relative">Packer Force ($F_a$)</div>
+                            <div id="val-force" class="text-xl font-bold text-red-400 z-10 relative">0 kips</div>
+                            <div class="text-[9px] text-slate-500 z-10 relative" id="lbl-force">Neutral</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="mt-auto bg-slate-800/80 border border-slate-500 p-3 rounded-lg text-sm text-slate-300 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center">
+                        Initializing Mechanics Model...
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas Visualizations -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 h-full">
+                    <!-- Global Wellbore View -->
+                    <div class="bg-[#020617] rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[600px] flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest absolute top-3 left-3 z-10 bg-slate-800/80 p-1.5 rounded border border-slate-600 backdrop-blur shadow-lg">Wellbore Macromechanics</h3>
+                        <canvas id="wellCanvas" width="300" height="580" class="h-full w-auto max-w-full"></canvas>
+                    </div>
+
+                    <!-- Local Packer View (Zoomed) -->
+                    <div class="bg-[#0f172a] rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[600px] flex flex-col items-center shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest absolute top-3 left-3 z-10 bg-slate-800/80 p-1.5 rounded border border-slate-600 backdrop-blur shadow-lg">Packer Interface (Zoom)</h3>
+                        <canvas id="packerCanvas" width="300" height="580" class="h-full w-auto max-w-full"></canvas>
+                        
+                        <div class="absolute bottom-4 right-4 bg-slate-800/90 p-2.5 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 pointer-events-none z-10 shadow-xl">
+                            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#94a3b8]"></span> Production Tubing</div>
+                            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#64748b]"></span> Casing Wall</div>
+                            <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-red-600 border border-red-900"></span> Rubber Elements</div>
+                            <div class="flex items-center gap-2"><span class="w-3 h-[2px] bg-yellow-400"></span> Force Vectors</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const wCanvas = document.getElementById('wellCanvas');
+        const wCtx = wCanvas.getContext('2d');
+        const pCanvas = document.getElementById('packerCanvas');
+        const pCtx = pCanvas.getContext('2d');
+        
+        const slTemp = document.getElementById('slider-temp');
+        const slPi = document.getElementById('slider-pi');
+        const selPacker = document.getElementById('select-packer');
+
+        // Well Data (Approximate)
+        const L_BASE = 10000; // ft
+        const E = 30000000; // Young's Modulus (psi)
+        const ALPHA = 0.0000069; // Thermal expansion coeff (1/F)
+        const As = 4.0; // Cross sectional area of tubing steel (sq in)
+        const Ai = 10.0; // Internal area
+        const Poisson = 0.3;
+
+        let scenario = 'shut_in';
+        let T_avg = 100; // Base temp
+        let P_i = 2000; // Base pressure
+        
+        let delta_L_thermal = 0;
+        let delta_L_balloon = 0;
+        let delta_L_total = 0; // Negative means shrinkage (up), Positive means elongation (down)
+        
+        let Force_axial = 0; // lbs. Positive = Tension, Negative = Compression
+        let packerType = 'fixed';
+
+        let animationTime = 0;
+        let fluidParticles = [];
+
+        class FluidParticle {
+            constructor() { this.reset(true); }
+            reset(randomY = false) {
+                this.x = (pCanvas.width / 2) + (Math.random() - 0.5) * 30;
+                
+                if (scenario === 'stimulating') {
+                    // Pumping down
+                    this.y = randomY ? Math.random() * pCanvas.height : 0;
+                    this.vy = 8 + Math.random() * 4;
+                } else if (scenario === 'producing') {
+                    // Flowing up
+                    this.y = randomY ? Math.random() * pCanvas.height : pCanvas.height;
+                    this.vy = -(6 + Math.random() * 4);
+                } else {
+                    // Static
+                    this.y = Math.random() * pCanvas.height;
+                    this.vy = (Math.random() - 0.5) * 0.5;
+                }
+                this.active = true;
+            }
+            update() {
+                this.y += this.vy;
+                this.x += (Math.random() - 0.5) * 2; // Turbulence
+                
+                // Bounds
+                if (this.x < pCanvas.width/2 - 20) this.x = pCanvas.width/2 - 20;
+                if (this.x > pCanvas.width/2 + 20) this.x = pCanvas.width/2 + 20;
+
+                if (scenario === 'stimulating' && this.y > pCanvas.height) this.reset();
+                if (scenario === 'producing' && this.y < 0) this.reset();
+            }
+            draw(ctxTarget) {
+                ctxTarget.beginPath();
+                ctxTarget.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+                if (scenario === 'stimulating') ctxTarget.fillStyle = 'rgba(56, 189, 248, 0.8)'; // Cold acid blue
+                else if (scenario === 'producing') ctxTarget.fillStyle = 'rgba(239, 68, 68, 0.8)'; // Hot gas red
+                else ctxTarget.fillStyle = 'rgba(100, 116, 139, 0.5)'; // Static gray fluid
+                ctxTarget.fill();
+            }
+        }
+
+        for (let i = 0; i < 100; i++) fluidParticles.push(new FluidParticle());
+
+        function setScenario(s) {
+            scenario = s;
+            document.querySelectorAll('.btn-action').forEach(btn => btn.style.opacity = '0.5');
+            document.querySelectorAll('.btn-action').forEach(btn => btn.style.boxShadow = 'none');
+            
+            let btn;
+            if (s === 'shut_in') {
+                btn = document.getElementById('btn-shutin');
+                slTemp.value = 100; slPi.value = 2000;
+            } else if (s === 'producing') {
+                btn = document.getElementById('btn-prod');
+                slTemp.value = 220; slPi.value = 5000;
+            } else if (s === 'stimulating') {
+                btn = document.getElementById('btn-stim');
+                slTemp.value = 60; slPi.value = 8000;
+            }
+            
+            btn.style.opacity = '1';
+            btn.style.boxShadow = '0 0 15px rgba(255,255,255,0.2)';
+            
+            fluidParticles.forEach(p => p.reset(true));
+            updatePhysics();
+        }
+
+        window.setScenario = setScenario;
+
+        function updatePhysics() {
+            T_avg = parseFloat(slTemp.value);
+            P_i = parseFloat(slPi.value);
+            packerType = selPacker.value;
+
+            document.getElementById('val-temp').innerText = T_avg + " °F";
+            document.getElementById('val-pi').innerText = P_i + " psi";
+
+            // 1. Thermal Effect (Lubinski eq)
+            // dLt = L * alpha * dT
+            let deltaT = T_avg - 100; // Base temp 100 F
+            delta_L_thermal = L_BASE * ALPHA * deltaT; // ft
+
+            // 2. Ballooning Effect
+            // Internal pressure swells tubing radially, causing it to shrink axially
+            // dLb = - (L * v * (dPi * Ai - dPo * Ao) / (E * As))
+            // Simplified for visualizer
+            let deltaP = P_i - 2000; // Base pressure
+            delta_L_balloon = - (L_BASE * Poisson * (deltaP * Ai)) / (E * As);
+
+            // Total Movement Potential
+            delta_L_total = delta_L_thermal + delta_L_balloon;
+
+            // Force Calculation
+            let fBox = document.getElementById('box-force');
+            let forceEl = document.getElementById('val-force');
+            let fLbl = document.getElementById('lbl-force');
+            let dlEl = document.getElementById('val-dl');
+            
+            if (packerType === 'fixed') {
+                // Movement is prevented. Stress builds up.
+                // Hooke's Law: F = E * As * (dL / L)
+                Force_axial = - (E * As * (delta_L_total / L_BASE)); // lbs
+                
+                dlEl.innerText = "0.0 ft"; // Fixed, no movement
+                dlEl.className = "text-xl font-bold text-slate-500 z-10 relative";
+                
+                let forceKips = Force_axial / 1000;
+                
+                if (Math.abs(forceKips) < 5) {
+                    forceEl.innerText = forceKips.toFixed(1) + " kips";
+                    forceEl.className = "text-xl font-bold text-white z-10 relative";
+                    fLbl.innerText = "Neutral";
+                    fBox.style.background = "var(--panel-bg)";
+                } else if (forceKips > 0) {
+                    forceEl.innerText = "+" + forceKips.toFixed(1) + " kips";
+                    forceEl.className = "text-xl font-bold text-sky-400 z-10 relative";
+                    fLbl.innerText = "TENSION (Pulling Up)";
+                    fBox.style.background = "rgba(14, 165, 233, 0.2)";
+                } else {
+                    forceEl.innerText = forceKips.toFixed(1) + " kips";
+                    forceEl.className = "text-xl font-bold text-red-500 animate-pulse z-10 relative";
+                    fLbl.innerText = "COMPRESSION (Buckling Risk)";
+                    fBox.style.background = "rgba(239, 68, 68, 0.2)";
+                }
+            } else {
+                // Slip joint allows movement. Force is zero.
+                Force_axial = 0;
+                
+                dlEl.innerText = (delta_L_total > 0 ? "+" : "") + delta_L_total.toFixed(2) + " ft";
+                dlEl.className = "text-xl font-bold " + (delta_L_total > 0 ? "text-red-400" : "text-sky-400") + " z-10 relative";
+                
+                forceEl.innerText = "0.0 kips";
+                forceEl.className = "text-xl font-bold text-emerald-400 z-10 relative";
+                fLbl.innerText = "Stress Relieved";
+                fBox.style.background = "rgba(16, 185, 129, 0.1)";
+            }
+
+            // Update Status Box
+            let sBox = document.getElementById('status-box');
+            if (scenario === 'shut_in') {
+                sBox.className = "mt-auto bg-slate-800/80 border border-slate-500 p-3 rounded-lg text-sm text-slate-300 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center";
+                sBox.innerHTML = "WELL SHUT-IN (STATIC) <br><span class='text-xs font-normal mt-1 block'>Temperature and pressures are at baseline. No significant stress or movement.</span>";
+            } else if (scenario === 'producing') {
+                if (packerType === 'fixed') {
+                    sBox.className = "mt-auto bg-red-900/60 border border-red-500 p-3 rounded-lg text-sm text-red-200 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.4)]";
+                    sBox.innerHTML = "🚨 HOT PRODUCTION (FIXED PACKER) <br><span class='text-xs font-normal mt-1 block'>Tubing wants to elongate due to heat, but packer prevents it. Massive COMPRESSION force builds up, risking tubing buckling!</span>";
+                } else {
+                    sBox.className = "mt-auto bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-sm text-emerald-200 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center";
+                    sBox.innerHTML = "✅ HOT PRODUCTION (SLIP JOINT) <br><span class='text-xs font-normal mt-1 block'>Tubing expands downwards freely through the PBR seal assembly. Stress is eliminated.</span>";
+                }
+            } else if (scenario === 'stimulating') {
+                if (packerType === 'fixed') {
+                    sBox.className = "mt-auto bg-sky-900/60 border border-sky-500 p-3 rounded-lg text-sm text-sky-200 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center";
+                    sBox.innerHTML = "⚠️ COLD INJECTION (FIXED PACKER) <br><span class='text-xs font-normal mt-1 block'>Tubing shrinks from cold and balloons from high pressure. Massive TENSION force pulling up on the packer. Risk of packer unseating!</span>";
+                } else {
+                    sBox.className = "mt-auto bg-amber-900/40 border border-amber-500 p-3 rounded-lg text-sm text-amber-200 font-semibold leading-relaxed text-center transition-all h-[100px] flex items-center justify-center";
+                    sBox.innerHTML = "⚠️ COLD INJECTION (SLIP JOINT) <br><span class='text-xs font-normal mt-1 block'>Tubing shrinks upwards rapidly. If the seals pull completely out of the PBR, well integrity is lost!</span>";
+                }
+            }
+        }
+
+        window.updatePhysics = updatePhysics;
+
+        // Visual mapping
+        // delta_L ranges roughly from -10 to +10 ft. Map this to pixels.
+        const px_per_ft = 3; 
+
+        function drawGlobalWellbore() {
+            wCtx.clearRect(0, 0, wCanvas.width, wCanvas.height);
+            let cx = wCanvas.width / 2;
+            let cyTop = 50;
+            let cyBot = 500;
+
+            // Background
+            wCtx.fillStyle = '#451a03'; wCtx.fillRect(0, 0, wCanvas.width, wCanvas.height);
+
+            // Casing
+            wCtx.fillStyle = '#64748b';
+            wCtx.fillRect(cx - 30, cyTop, 60, cyBot - cyTop + 20);
+            wCtx.fillStyle = '#0f172a';
+            wCtx.fillRect(cx - 25, cyTop, 50, cyBot - cyTop + 20);
+
+            // Tubing calculation
+            let tLength = cyBot - cyTop - 50; // Base visual length
+            
+            // Apply visual buckling (Sine wave) if high compression
+            let buckleOffset = 0;
+            let isBuckling = (packerType === 'fixed' && Force_axial < -20000);
+
+            wCtx.strokeStyle = '#94a3b8';
+            wCtx.lineWidth = 14;
+            wCtx.lineJoin = 'round';
+            wCtx.lineCap = 'butt';
+
+            wCtx.beginPath();
+            wCtx.moveTo(cx, cyTop);
+            
+            for (let y = cyTop; y <= cyTop + tLength; y += 10) {
+                if (isBuckling) {
+                    let freq = (y - cyTop) * 0.05;
+                    let amp = Math.min(8, Math.abs(Force_axial / 10000));
+                    let b_x = cx + Math.sin(freq) * amp * Math.sin(animationTime*5); // wobbling
+                    wCtx.lineTo(b_x, y);
+                } else {
+                    wCtx.lineTo(cx, y);
+                }
+            }
+            wCtx.stroke();
+
+            // Packer
+            wCtx.fillStyle = '#dc2626';
+            wCtx.fillRect(cx - 25, cyTop + tLength, 50, 20);
+            wCtx.fillStyle = '#fff'; wCtx.font = "10px Arial"; wCtx.textAlign = 'center';
+            wCtx.fillText("PACKER", cx, cyTop + tLength + 14);
+
+            // Labels
+            wCtx.fillStyle = '#cbd5e1';
+            wCtx.fillText("Surface", cx, cyTop - 10);
+            
+            if (isBuckling) {
+                wCtx.fillStyle = '#ef4444';
+                wCtx.font = "bold 12px Arial";
+                wCtx.fillText("\u2190 HELICAL BUCKLING \u2192", cx, cyTop + tLength/2);
+            }
+        }
+
+        function drawPackerZoom() {
+            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+            let cx = pCanvas.width / 2;
+            let cy = pCanvas.height / 2; // Packer set depth
+
+            // Background Annulus
+            pCtx.fillStyle = '#0f172a'; pCtx.fillRect(0, 0, pCanvas.width, pCanvas.height);
+
+            // Casing Wall
+            pCtx.fillStyle = '#64748b';
+            pCtx.fillRect(cx - 60, 0, 10, pCanvas.height);
+            pCtx.fillRect(cx + 50, 0, 10, pCanvas.height);
+
+            // Movement logic
+            let visualMove = 0;
+            if (packerType === 'slip_joint') {
+                visualMove = delta_L_total * px_per_ft;
+            }
+
+            // Draw Tubing (Moving part)
+            pCtx.fillStyle = '#94a3b8';
+            pCtx.fillRect(cx - 20, 0, 40, cy + 50 + visualMove); // Ends inside PBR
+
+            // Internal void
+            pCtx.fillStyle = '#1e293b';
+            pCtx.fillRect(cx - 10, 0, 20, cy + 50 + visualMove);
+
+            // Draw fluid particles inside tubing
+            fluidParticles.forEach(p => {
+                p.y += visualMove * 0.05; // Shift particles slightly with tubing
+                p.update();
+                p.draw(pCtx);
+            });
+
+            if (packerType === 'fixed') {
+                // Fixed Packer (Attached permanently to tubing and casing)
+                pCtx.fillStyle = '#475569'; // Steel body
+                pCtx.fillRect(cx - 50, cy - 30, 100, 60);
+                
+                pCtx.fillStyle = '#dc2626'; // Rubber elements
+                pCtx.fillRect(cx - 50, cy - 10, 30, 20); // Left rubber
+                pCtx.fillRect(cx + 20, cy - 10, 30, 20); // Right rubber
+                
+                // Draw Stress Vectors
+                if (Math.abs(Force_axial) > 5000) {
+                    pCtx.strokeStyle = '#facc15';
+                    pCtx.lineWidth = 4;
+                    pCtx.fillStyle = '#facc15';
+                    
+                    let isTension = Force_axial > 0;
+                    let arrowDir = isTension ? -1 : 1; // Tension pulls up, Compression pushes down
+                    let fScale = Math.min(50, Math.abs(Force_axial) / 1000);
+
+                    // Draw forces acting ON THE PACKER from the tubing
+                    pCtx.beginPath();
+                    pCtx.moveTo(cx - 25, cy - 40 * arrowDir);
+                    pCtx.lineTo(cx - 25, cy - (40 + fScale) * arrowDir);
+                    pCtx.moveTo(cx + 25, cy - 40 * arrowDir);
+                    pCtx.lineTo(cx + 25, cy - (40 + fScale) * arrowDir);
+                    pCtx.stroke();
+                    
+                    // Arrow heads
+                    pCtx.beginPath(); pCtx.moveTo(cx - 25, cy - 40 * arrowDir); pCtx.lineTo(cx - 30, cy - (40 + 10*arrowDir) * arrowDir); pCtx.lineTo(cx - 20, cy - (40 + 10*arrowDir) * arrowDir); pCtx.fill();
+                    pCtx.beginPath(); pCtx.moveTo(cx + 25, cy - 40 * arrowDir); pCtx.lineTo(cx + 30, cy - (40 + 10*arrowDir) * arrowDir); pCtx.lineTo(cx + 20, cy - (40 + 10*arrowDir) * arrowDir); pCtx.fill();
+                }
+
+            } else {
+                // Slip Joint / PBR (Polished Bore Receptacle)
+                
+                // Outer PBR body (Anchored to casing via packer)
+                pCtx.fillStyle = '#475569';
+                pCtx.fillRect(cx - 30, cy - 80, 10, 160); // Left PBR wall
+                pCtx.fillRect(cx + 20, cy - 80, 10, 160); // Right PBR wall
+                
+                // Packer anchoring the PBR
+                pCtx.fillStyle = '#dc2626';
+                pCtx.fillRect(cx - 50, cy - 10, 20, 20); // Left rubber
+                pCtx.fillRect(cx + 30, cy - 10, 20, 20); // Right rubber
+
+                // Seals on the moving tubing
+                pCtx.fillStyle = '#111827';
+                let sealY = cy + visualMove;
+                
+                // Warning if unsealed
+                if (sealY < cy - 80) {
+                    pCtx.fillStyle = '#ef4444';
+                    pCtx.font = "bold 14px Arial";
+                    pCtx.textAlign = "center";
+                    pCtx.fillText("⚠️ SEALS LOST!", cx, cy - 100);
+                    
+                    // Gas escaping to annulus
+                    if (scenario === 'stimulating') {
+                        pCtx.fillStyle = '#38bdf8';
+                        for(let i=0; i<10; i++) {
+                            pCtx.fillRect(cx - 40 + Math.random()*20, cy - 80 - Math.random()*50, 4, 4);
+                            pCtx.fillRect(cx + 20 + Math.random()*20, cy - 80 - Math.random()*50, 4, 4);
+                        }
+                    }
+                } else {
+                    pCtx.fillRect(cx - 22, sealY - 10, 4, 20); // Left seal
+                    pCtx.fillRect(cx + 18, sealY - 10, 4, 20); // Right seal
+                }
+
+                // Guide lines showing movement
+                pCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                pCtx.setLineDash([5, 5]);
+                pCtx.beginPath(); pCtx.moveTo(cx + 35, cy); pCtx.lineTo(cx + 100, cy); pCtx.stroke();
+                pCtx.beginPath(); pCtx.moveTo(cx + 35, sealY); pCtx.lineTo(cx + 100, sealY); pCtx.stroke();
+                pCtx.setLineDash([]);
+                
+                pCtx.fillStyle = '#fff'; pCtx.font = "10px Arial"; pCtx.textAlign = "left";
+                pCtx.fillText("Neutral", cx + 55, cy - 5);
+                pCtx.fillStyle = delta_L_total > 0 ? '#ef4444' : '#38bdf8';
+                pCtx.fillText("Current", cx + 55, sealY + 12);
+            }
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            
+            drawGlobalWellbore();
+            drawPackerZoom();
+
+            requestAnimationFrame(animate);
+        }
+
+        // Init
+        setScenario('shut_in');
+        animate();
+
+    </script>
+</body>
+</html>

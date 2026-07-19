@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Well ICV & Water Shutoff Simulator</title>
+    <style>
+        :root {
+            --bg-color: #050a15;
+            --panel-bg: #0f172a;
+            --text-main: #38bdf8;
+            --text-muted: #94a3b8;
+            --alert-red: #ef4444;
+            --warning-orange: #f59e0b;
+            --safe-green: #10b981;
+            --water-blue: #2563eb;
+            --gas-cyan: #22d3ee;
+            --rock-color: #451a03;
+        }
+
+        body {
+            font-family: 'Consolas', 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .header p {
+            margin: 5px 0 0 0;
+            color: var(--warning-orange);
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: auto;
+            background: linear-gradient(to bottom, #020617 0%, #0f172a 100%);
+            border-radius: 4px;
+        }
+
+        .control-panel {
+            width: 340px;
+            background-color: var(--panel-bg);
+            border: 2px solid #1e293b;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .dashboard {
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid var(--text-main);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 15px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .alert-box {
+            padding: 10px;
+            border-radius: 4px;
+            background-color: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--alert-red);
+            color: var(--alert-red);
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .control-group {
+            border: 1px solid #334155;
+            padding: 12px;
+            border-radius: 6px;
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .control-title {
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            color: #fff;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--safe-green);
+            margin: 10px 0;
+        }
+
+        .btn-hazard {
+            width: 100%;
+            background-color: #7f1d1d;
+            border: 1px solid var(--alert-red);
+            color: #fff;
+            padding: 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 12px;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn-hazard:hover { background-color: #991b1b; }
+        .btn-hazard:disabled { background-color: #334155; border-color: #475569; color: #94a3b8; cursor: not-allowed; }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            font-size: 11px;
+            color: var(--text-muted);
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .color-box {
+            width: 12px;
+            height: 12px;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Smart Well ICV & Water Shutoff Simulator</h1>
+        <p>COMMINGLED PRODUCTION | LIQUID LOADING PREVENTION</p>
+    </div>
+
+    <div class="container">
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="800" height="650"></canvas>
+            <div class="legend">
+                <span><div class="color-box" style="background:var(--gas-cyan);"></div> Dry Gas (Metan)</span>
+                <span><div class="color-box" style="background:var(--water-blue);"></div> Formation Water</span>
+                <span><div class="color-box" style="background:#475569;"></div> Tubing & Packers</span>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div class="dashboard">
+                <div class="stat-row">
+                    <span>Total Gas Rate:</span>
+                    <span class="stat-value" id="gasRateVal" style="color:var(--gas-cyan)">120 MMscfd</span>
+                </div>
+                <div class="stat-row">
+                    <span>Total Water Rate:</span>
+                    <span class="stat-value" id="waterRateVal" style="color:var(--water-blue)">0 bbl/d</span>
+                </div>
+                <div class="stat-row">
+                    <span>Water Cut:</span>
+                    <span class="stat-value" id="waterCutVal">0 %</span>
+                </div>
+                <div class="stat-row">
+                    <span>Hydrostatic Backpressure:</span>
+                    <span class="stat-value" id="hydroVal">Normal</span>
+                </div>
+                <div id="liquidLoadAlert" class="alert-box">
+                    🚨 LIQUID LOADING DETECTED!<br>Well is dying due to hydrostatic column!
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="control-title">
+                    <span>ZONE A (UPPER) ICV</span>
+                    <span id="icvADisplay">100% OPEN</span>
+                </div>
+                <label>Upper Zone: Pure Gas Drive</label>
+                <input type="range" id="icvASlider" min="0" max="100" value="100">
+            </div>
+
+            <div class="control-group">
+                <div class="control-title">
+                    <span>ZONE B (LOWER) ICV</span>
+                    <span id="icvBDisplay">100% OPEN</span>
+                </div>
+                <label>Lower Zone: Gas + Aquifer Support</label>
+                <input type="range" id="icvBSlider" min="0" max="100" value="100">
+            </div>
+
+            <button class="btn-hazard" id="btnBreakthrough">TRIGGER WATER BREAKTHROUGH</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const gasRateVal = document.getElementById('gasRateVal');
+        const waterRateVal = document.getElementById('waterRateVal');
+        const waterCutVal = document.getElementById('waterCutVal');
+        const hydroVal = document.getElementById('hydroVal');
+        const liquidLoadAlert = document.getElementById('liquidLoadAlert');
+        
+        const icvASlider = document.getElementById('icvASlider');
+        const icvADisplay = document.getElementById('icvADisplay');
+        const icvBSlider = document.getElementById('icvBSlider');
+        const icvBDisplay = document.getElementById('icvBDisplay');
+        const btnBreakthrough = document.getElementById('btnBreakthrough');
+
+        // State Variables
+        let icvA = 100;
+        let icvB = 100;
+        let waterBreakthrough = false;
+        
+        let liquidLevel = 0; // Hydrostatic column height
+        const WELL_CENTER_X = 400;
+        const TUBING_WIDTH = 40;
+        
+        let particles = [];
+
+        // Zones
+        const zoneA_Y = 250; // Upper Zone Center
+        const zoneB_Y = 500; // Lower Zone Center
+
+        class Particle {
+            constructor(zone, type) {
+                // Spawn randomly on the left or right formation
+                let side = Math.random() > 0.5 ? 1 : -1;
+                this.x = WELL_CENTER_X + (side * (TUBING_WIDTH/2 + Math.random()*150 + 20));
+                this.y = zone === 'A' ? zoneA_Y + (Math.random()*60 - 30) : zoneB_Y + (Math.random()*60 - 30);
+                this.zone = zone;
+                this.type = type; // 'gas' or 'water'
+                
+                this.inTubing = false;
+                // Move towards wellbore
+                this.vx = side === 1 ? - (Math.random()*2 + 1) : (Math.random()*2 + 1);
+                this.vy = (Math.random() - 0.5);
+                
+                this.size = type === 'gas' ? 3 : 4;
+            }
+
+            update(hydrostaticPenalty) {
+                let currentIcv = this.zone === 'A' ? icvA : icvB;
+
+                if (!this.inTubing) {
+                    // Moving through formation towards ICV
+                    this.x += this.vx * (currentIcv / 100 + 0.1);
+                    this.y += this.vy;
+
+                    // Check if entered tubing (ICV restriction applies here conceptually)
+                    if (Math.abs(this.x - WELL_CENTER_X) < TUBING_WIDTH/2) {
+                        // Drop particle if ICV is completely closed
+                        if (currentIcv < 5) {
+                            this.toBeDeleted = true;
+                            return;
+                        }
+                        this.inTubing = true;
+                        this.x = WELL_CENTER_X + (Math.random() * (TUBING_WIDTH-10) - (TUBING_WIDTH/2 - 5));
+                        // Upward velocity
+                        this.vx = 0;
+                        this.vy = this.type === 'gas' ? -5 : -2.5; 
+                    }
+                } else {
+                    // Inside tubing, moving up
+                    // Hydrostatic backpressure slows down everything, especially gas
+                    let speedMod = 1 - hydrostaticPenalty;
+                    if (speedMod < 0.1) speedMod = 0.1;
+
+                    this.y += this.vy * speedMod;
+                    
+                    // Add some chaotic movement inside pipe
+                    this.x += (Math.random() - 0.5) * 2;
+                    if (this.x < WELL_CENTER_X - TUBING_WIDTH/2 + 5) this.x = WELL_CENTER_X - TUBING_WIDTH/2 + 5;
+                    if (this.x > WELL_CENTER_X + TUBING_WIDTH/2 - 5) this.x = WELL_CENTER_X + TUBING_WIDTH/2 - 5;
+                }
+
+                // Remove when reached surface
+                if (this.y < 0) this.toBeDeleted = true;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'gas' ? 'rgba(34, 211, 238, 0.8)' : 'rgba(37, 99, 235, 0.9)';
+                ctx.fill();
+            }
+        }
+
+        function drawFormation() {
+            // Background Rock
+            ctx.fillStyle = '#1e1b4b'; // Very dark indigo for shale
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Zone A (Gas Sand)
+            let grdA = ctx.createLinearGradient(0, zoneA_Y-50, 0, zoneA_Y+50);
+            grdA.addColorStop(0, '#1e1b4b');
+            grdA.addColorStop(0.5, 'rgba(120, 53, 15, 0.6)'); // Brownish porous sand
+            grdA.addColorStop(1, '#1e1b4b');
+            ctx.fillStyle = grdA;
+            ctx.fillRect(0, zoneA_Y-80, canvas.width, 160);
+
+            // Zone B (Gas/Water Sand)
+            let grdB = ctx.createLinearGradient(0, zoneB_Y-50, 0, zoneB_Y+50);
+            grdB.addColorStop(0, '#1e1b4b');
+            // If water breakthrough, tint the rock blueish at the bottom
+            if(waterBreakthrough) {
+                grdB.addColorStop(0.3, 'rgba(120, 53, 15, 0.6)');
+                grdB.addColorStop(0.8, 'rgba(30, 58, 138, 0.7)'); // Water creeping in
+            } else {
+                grdB.addColorStop(0.5, 'rgba(120, 53, 15, 0.6)');
+            }
+            grdB.addColorStop(1, '#1e1b4b');
+            ctx.fillStyle = grdB;
+            ctx.fillRect(0, zoneB_Y-80, canvas.width, 160);
+
+            // Text Labels
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.fillText("ZONE A", 50, zoneA_Y);
+            ctx.fillText("Gas Sand", 50, zoneA_Y + 15);
+            ctx.fillText("ZONE B", 50, zoneB_Y);
+            ctx.fillText("Aquifer Edge", 50, zoneB_Y + 15);
+        }
+
+        function drawWellbore() {
+            // Casing
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2 - 10, 0, 10, canvas.height);
+            ctx.fillRect(WELL_CENTER_X + TUBING_WIDTH/2, 0, 10, canvas.height);
+
+            // Packers (Isolation)
+            ctx.fillStyle = '#0f172a';
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 2;
+            
+            // Upper Packer
+            let p1_y = zoneA_Y - 100;
+            ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2 - 10, p1_y, TUBING_WIDTH + 20, 20);
+            ctx.strokeRect(WELL_CENTER_X - TUBING_WIDTH/2 - 10, p1_y, TUBING_WIDTH + 20, 20);
+
+            // Middle Packer (Isolating Zone A and B)
+            let p2_y = zoneB_Y - 100;
+            ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2 - 10, p2_y, TUBING_WIDTH + 20, 20);
+            ctx.strokeRect(WELL_CENTER_X - TUBING_WIDTH/2 - 10, p2_y, TUBING_WIDTH + 20, 20);
+
+            // Liquid Level (Hydrostatic column visualization inside tubing)
+            if (liquidLevel > 0) {
+                let fluidY = canvas.height - (liquidLevel * 5); // Scale visual
+                if (fluidY < p1_y) fluidY = p1_y; // Max visual height
+                ctx.fillStyle = 'rgba(37, 99, 235, 0.4)';
+                ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2, fluidY, TUBING_WIDTH, canvas.height - fluidY);
+            }
+
+            // Draw ICV Valves
+            // ICV A
+            let icvA_Color = icvA > 50 ? 'var(--safe-green)' : (icvA > 10 ? 'var(--warning-orange)' : 'var(--alert-red)');
+            ctx.fillStyle = icvA_Color;
+            // Left valve
+            ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2 - 5, zoneA_Y - 20, 5, 40);
+            // Right valve
+            ctx.fillRect(WELL_CENTER_X + TUBING_WIDTH/2, zoneA_Y - 20, 5, 40);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`ICV A: ${icvA}%`, WELL_CENTER_X + TUBING_WIDTH/2 + 20, zoneA_Y);
+
+            // ICV B
+            let icvB_Color = icvB > 50 ? 'var(--safe-green)' : (icvB > 10 ? 'var(--warning-orange)' : 'var(--alert-red)');
+            ctx.fillStyle = icvB_Color;
+            ctx.fillRect(WELL_CENTER_X - TUBING_WIDTH/2 - 5, zoneB_Y - 20, 5, 40);
+            ctx.fillRect(WELL_CENTER_X + TUBING_WIDTH/2, zoneB_Y - 20, 5, 40);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(`ICV B: ${icvB}%`, WELL_CENTER_X + TUBING_WIDTH/2 + 20, zoneB_Y);
+        }
+
+        function calculateRates() {
+            // Base potentials
+            let potentialGasA = 60 * (icvA / 100);
+            let potentialGasB = waterBreakthrough ? (20 * (icvB / 100)) : (60 * (icvB / 100));
+            let potentialWaterB = waterBreakthrough ? (3000 * (icvB / 100)) : 0;
+
+            // Liquid Loading Logic
+            // If water rate is high and gas rate is low, liquid accumulates
+            let totalGasVel = potentialGasA + potentialGasB;
+            
+            // Critical gas velocity concept (Turner's droplet theory simplified)
+            let liftingCapacity = totalGasVel * 25; // How much water it can lift
+            
+            if (potentialWaterB > liftingCapacity && potentialWaterB > 0) {
+                liquidLevel += 0.5; // Liquid builds up
+            } else {
+                liquidLevel -= 1.0; // Well cleans up
+            }
+            
+            if (liquidLevel < 0) liquidLevel = 0;
+            if (liquidLevel > 100) liquidLevel = 100;
+
+            // Hydrostatic penalty on gas production
+            let hydroPenalty = liquidLevel / 100; 
+            
+            let actualGasA = potentialGasA * (1 - hydroPenalty * 0.8);
+            let actualGasB = potentialGasB * (1 - hydroPenalty * 0.8);
+            let totalGas = actualGasA + actualGasB;
+            
+            let totalWater = potentialWaterB; // Water keeps coming or falling back
+
+            return {
+                gasA: actualGasA,
+                gasB: actualGasB,
+                totalGas: totalGas,
+                totalWater: totalWater,
+                penalty: hydroPenalty
+            };
+        }
+
+        function updateDashboard(rates) {
+            gasRateVal.innerText = rates.totalGas.toFixed(1) + " MMscfd";
+            waterRateVal.innerText = rates.totalWater.toFixed(0) + " bbl/d";
+            
+            // Calculate Water Cut (simplification for display: water/(water+liquid equivalent of gas))
+            let wc = 0;
+            if (rates.totalWater > 0) {
+                wc = (rates.totalWater / (rates.totalWater + (rates.totalGas * 200))) * 100;
+            }
+            waterCutVal.innerText = wc.toFixed(1) + " %";
+
+            if (rates.penalty > 0.1) {
+                gasRateVal.style.color = 'var(--alert-red)';
+                hydroVal.innerText = (rates.penalty * 100).toFixed(0) + "% (CRITICAL BACKPRESSURE)";
+                hydroVal.style.color = 'var(--alert-red)';
+                liquidLoadAlert.style.display = 'block';
+            } else {
+                gasRateVal.style.color = 'var(--gas-cyan)';
+                hydroVal.innerText = "Normal";
+                hydroVal.style.color = 'var(--safe-green)';
+                liquidLoadAlert.style.display = 'none';
+            }
+        }
+
+        function spawnParticles(rates) {
+            // Spawn Zone A Gas
+            if (Math.random() < rates.gasA / 20) {
+                particles.push(new Particle('A', 'gas'));
+            }
+            
+            // Spawn Zone B Gas
+            if (Math.random() < rates.gasB / 20) {
+                particles.push(new Particle('B', 'gas'));
+            }
+
+            // Spawn Zone B Water
+            if (waterBreakthrough && Math.random() < rates.totalWater / 1000) {
+                particles.push(new Particle('B', 'water'));
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawFormation();
+            drawWellbore();
+
+            let rates = calculateRates();
+            updateDashboard(rates);
+            spawnParticles(rates);
+
+            // Update and draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.update(rates.penalty);
+                if (p.toBeDeleted) {
+                    particles.splice(i, 1);
+                } else {
+                    p.draw();
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        icvASlider.addEventListener('input', (e) => {
+            icvA = parseInt(e.target.value);
+            icvADisplay.innerText = icvA + "% OPEN";
+            icvASlider.style.accentColor = icvA > 50 ? 'var(--safe-green)' : (icvA > 10 ? 'var(--warning-orange)' : 'var(--alert-red)');
+        });
+
+        icvBSlider.addEventListener('input', (e) => {
+            icvB = parseInt(e.target.value);
+            icvBDisplay.innerText = icvB + "% OPEN";
+            icvBSlider.style.accentColor = icvB > 50 ? 'var(--safe-green)' : (icvB > 10 ? 'var(--warning-orange)' : 'var(--alert-red)');
+        });
+
+        btnBreakthrough.addEventListener('click', () => {
+            waterBreakthrough = true;
+            btnBreakthrough.innerText = "AQUIFER CONING ACTIVE!";
+            btnBreakthrough.disabled = true;
+        });
+
+        // Start
+        animate();
+    </script>
+</body>
+</html>

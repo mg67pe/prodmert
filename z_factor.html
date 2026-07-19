@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gas PVT & Standing-Katz Z-Factor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Natural Gas PVT & Z-Factor Map</h1>
+            <p class="text-slate-400 text-sm">Standing-Katz Chart via Hall-Yarborough EoS & Wichert-Aziz Impurity Corrections</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Reservoir Conditions</h2>
+                    
+                    <div class="slider-label"><span>Pressure (P)</span> <span id="val-p" class="font-mono text-white">3000 psia</span></div>
+                    <input type="range" id="slider-p" min="100" max="10000" step="50" value="3000" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label"><span>Temperature (T)</span> <span id="val-t" class="font-mono text-orange-400">180 °F</span></div>
+                    <input type="range" id="slider-t" min="60" max="400" step="2" value="180" style="accent-color: #f97316;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-emerald-900 shadow-[0_0_15px_rgba(16,185,129,0.1)] h-fit mt-2">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-4 border-b border-emerald-900 pb-2">Gas Composition</h2>
+                    
+                    <div class="slider-label"><span>Specific Gravity (γg)</span> <span id="val-sg" class="font-mono text-emerald-300">0.65</span></div>
+                    <input type="range" id="slider-sg" min="0.55" max="1.0" step="0.01" value="0.65" style="accent-color: #10b981;">
+                    
+                    <div class="slider-label"><span>CO₂ Mole Fraction</span> <span id="val-co2" class="font-mono text-slate-300">0 %</span></div>
+                    <input type="range" id="slider-co2" min="0" max="20" step="0.5" value="0" style="accent-color: #94a3b8;">
+
+                    <div class="slider-label"><span>H₂S Mole Fraction</span> <span id="val-h2s" class="font-mono text-amber-300">0 %</span></div>
+                    <input type="range" id="slider-h2s" min="0" max="20" step="0.5" value="0" style="accent-color: #f59e0b;">
+                    
+                    <div class="text-[10px] text-slate-400 mt-[-5px] leading-tight text-center italic">
+                        Applies Wichert-Aziz Correction to Pseudo-Critical properties.
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas & KPI -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Reduced Pres & Temp</div>
+                        <div class="flex justify-center gap-4 text-white font-mono text-lg font-bold">
+                            <div><span class="text-[10px] text-slate-500 block">Ppr</span><span id="kpi-ppr">0.00</span></div>
+                            <div><span class="text-[10px] text-slate-500 block">Tpr</span><span id="kpi-tpr">0.00</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Compressibility (Z)</div>
+                        <div id="kpi-z" class="text-3xl font-bold text-sky-400">0.000</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Gas FVF (B<sub>g</sub>)</div>
+                        <div id="kpi-bg" class="text-2xl font-bold text-emerald-400">0.0000</div>
+                        <div class="text-[10px] text-slate-500">rcf / scf</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-orange-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Gas Density (ρ<sub>g</sub>)</div>
+                        <div id="kpi-rho" class="text-2xl font-bold text-orange-400">0.00</div>
+                        <div class="text-[10px] text-slate-500">lb / ft³</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[500px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Standing-Katz Chart (Isotherms of T<sub>pr</sub>)</h3>
+                    <canvas id="zCanvas" width="900" height="420" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10 text-right">
+                        <div class="flex items-center justify-end gap-2 mb-1"><span class="w-6 h-[2px] bg-slate-500"></span> T<sub>pr</sub> Isotherms</div>
+                        <div class="flex items-center justify-end gap-2"><span class="w-4 h-4 rounded-full bg-sky-400 shadow-[0_0_10px_#38bdf8]"></span> Operating Point</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('zCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slP = document.getElementById('slider-p');
+        const slT = document.getElementById('slider-t');
+        const slSG = document.getElementById('slider-sg');
+        const slCO2 = document.getElementById('slider-co2');
+        const slH2S = document.getElementById('slider-h2s');
+
+        // Hall-Yarborough Z-Factor Calculation (Newton-Raphson Method)
+        function calcHY_Z(Ppr, Tpr) {
+            if (Ppr === 0) return 1.0;
+            let t = 1 / Tpr;
+            let A = 0.06125 * Ppr * t * Math.exp(-1.2 * Math.pow(1 - t, 2));
+            let B = t * (14.76 - 9.76 * t + 4.58 * t * t);
+            let C = t * (90.7 - 242.2 * t + 42.4 * t * t);
+            let D = 2.18 + 2.82 * t;
+
+            let y = 0.001; // initial guess for reduced density
+            
+            for (let i = 0; i < 50; i++) {
+                let y2 = y * y;
+                let y3 = y2 * y;
+                let y4 = y3 * y;
+                
+                let f_y = (y + y2 + y3 - y4) / Math.pow(1 - y, 3) - B * y2 + C * Math.pow(y, D) - A;
+                let df_dy = (1 + 4 * y + 4 * y2 - 4 * y3 + y4) / Math.pow(1 - y, 4) - 2 * B * y + C * D * Math.pow(y, D - 1);
+                
+                let y_new = y - f_y / df_dy;
+                if (Math.abs(y - y_new) < 1e-6) break;
+                y = y_new;
+            }
+            return A / y;
+        }
+
+        function updateSimulation() {
+            let P = parseFloat(slP.value);
+            let T_F = parseFloat(slT.value);
+            let SG = parseFloat(slSG.value);
+            let y_co2 = parseFloat(slCO2.value) / 100.0;
+            let y_h2s = parseFloat(slH2S.value) / 100.0;
+
+            document.getElementById('val-p').innerText = P + " psia";
+            document.getElementById('val-t').innerText = T_F + " °F";
+            document.getElementById('val-sg').innerText = SG.toFixed(2);
+            document.getElementById('val-co2').innerText = slCO2.value + " %";
+            document.getElementById('val-h2s').innerText = slH2S.value + " %";
+
+            let T_R = T_F + 460; // Rankine
+
+            // Sutton's Correlations for Pseudo-Critical Properties
+            let Tpc = 169.2 + 349.5 * SG - 74.0 * (SG * SG);
+            let Ppc = 756.8 - 131.0 * SG - 3.6 * (SG * SG);
+
+            // Wichert-Aziz Correction for Non-Hydrocarbons
+            if (y_co2 > 0 || y_h2s > 0) {
+                let A_sum = y_h2s + y_co2;
+                let eps = 120 * (Math.pow(A_sum, 0.9) - Math.pow(A_sum, 1.6)) + 15 * (Math.pow(y_h2s, 0.5) - Math.pow(y_h2s, 4.0));
+                
+                Tpc = Tpc - eps;
+                Ppc = (Ppc * Tpc) / (Tpc + y_h2s * (1 - y_h2s) * eps);
+            }
+
+            // Pseudo-Reduced Properties
+            let Ppr = P / Ppc;
+            let Tpr = T_R / Tpc;
+
+            // Calculate Z
+            let Z = calcHY_Z(Ppr, Tpr);
+
+            // Calculate FVF (Bg) in res ft3 / scf
+            let Bg = 0.02827 * (Z * T_R) / P;
+
+            // Calculate Gas Density (lb/ft3)  (Air density standard ~0.0765 lb/scf * SG / Bg)
+            let rho_sc = 0.0763 * SG;
+            let rho_g = rho_sc / Bg;
+
+            // Update KPIs
+            document.getElementById('kpi-ppr').innerText = Ppr.toFixed(2);
+            document.getElementById('kpi-tpr').innerText = Tpr.toFixed(2);
+            document.getElementById('kpi-z').innerText = Z.toFixed(3);
+            document.getElementById('kpi-bg').innerText = Bg.toFixed(5);
+            document.getElementById('kpi-rho').innerText = rho_g.toFixed(2);
+
+            drawChart(Ppr, Tpr, Z);
+        }
+
+        function drawChart(op_Ppr, op_Tpr, op_Z) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 60; const padR = 40; const padT = 30; const padB = 40;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            // Graph Limits
+            const Ppr_MIN = 0; const Ppr_MAX = 15;
+            const Z_MIN = 0.2; const Z_MAX = 1.2;
+
+            const getX = (ppr) => padL + ((ppr - Ppr_MIN) / (Ppr_MAX - Ppr_MIN)) * chartW;
+            const getY = (z) => padT + chartH - ((z - Z_MIN) / (Z_MAX - Z_MIN)) * chartH;
+
+            // Draw Grid
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            
+            // X-Axis (Ppr)
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let x = 0; x <= Ppr_MAX; x += 1) {
+                let px = getX(x);
+                ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, H - padB); ctx.stroke();
+                if (x % 2 === 0) ctx.fillText(x, px, H - padB + 5);
+            }
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Pseudo-Reduced Pressure (Ppr)", W/2, H - 15);
+
+            // Y-Axis (Z)
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            for (let z = 0.2; z <= 1.2; z += 0.1) {
+                let py = getY(z);
+                ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(W - padR, py); ctx.stroke();
+                ctx.fillText(z.toFixed(1), padL - 10, py);
+            }
+            ctx.save(); ctx.translate(20, H/2); ctx.rotate(-Math.PI/2); ctx.textAlign = 'center';
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Compressibility Factor (Z)", 0, 0); ctx.restore();
+
+            // Background Tpr Isotherms (Standing-Katz Lines)
+            const isotherms = [1.05, 1.1, 1.2, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0];
+            ctx.lineWidth = 2;
+            
+            isotherms.forEach(tpr => {
+                ctx.beginPath();
+                ctx.strokeStyle = (Math.abs(tpr - op_Tpr) < 0.05) ? 'rgba(56, 189, 248, 0.8)' : 'rgba(100, 116, 139, 0.5)';
+                for (let ppr = 0; ppr <= Ppr_MAX; ppr += 0.1) {
+                    let z = calcHY_Z(ppr, tpr);
+                    let px = getX(ppr); let py = getY(z);
+                    
+                    // Clip to graph area
+                    if (py > padT && py < H - padB) {
+                        if (ppr === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                    } else if (ppr === 0) {
+                        ctx.moveTo(px, Math.min(Math.max(py, padT), H - padB));
+                    }
+                }
+                ctx.stroke();
+                
+                // Label isotherms at the end
+                let zEnd = calcHY_Z(Ppr_MAX, tpr);
+                if (zEnd >= Z_MIN && zEnd <= Z_MAX) {
+                    ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                    ctx.fillText(tpr.toFixed(2), getX(Ppr_MAX) + 5, getY(zEnd));
+                }
+            });
+
+            // Draw Operating Point (The glowing dot)
+            if (op_Ppr >= Ppr_MIN && op_Ppr <= Ppr_MAX && op_Z >= Z_MIN && op_Z <= Z_MAX) {
+                let ox = getX(op_Ppr); let oy = getY(op_Z);
+                
+                // Dashed lines to axes
+                ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+                ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, H - padB); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(padL, oy); ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Point
+                ctx.beginPath(); ctx.arc(ox, oy, 6, 0, Math.PI*2); 
+                ctx.fillStyle = '#38bdf8'; ctx.shadowBlur = 15; ctx.shadowColor = '#38bdf8'; ctx.fill();
+                ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+                // Point label
+                ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillText(`Z = ${op_Z.toFixed(3)}`, ox, oy - 10);
+            }
+        }
+
+        // Add Listeners
+        slP.addEventListener('input', updateSimulation);
+        slT.addEventListener('input', updateSimulation);
+        slSG.addEventListener('input', updateSimulation);
+        slCO2.addEventListener('input', updateSimulation);
+        slH2S.addEventListener('input', updateSimulation);
+
+        // Init
+        setTimeout(updateSimulation, 100);
+
+    </script>
+</body>
+</html>

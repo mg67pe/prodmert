@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directional Drilling Trajectory Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+        
+        .radio-group input[type="radio"] { display: none; }
+        .radio-group label {
+            padding: 0.5rem 1rem; border: 1px solid #3b82f6; border-radius: 0.5rem; 
+            cursor: pointer; font-size: 0.875rem; font-weight: bold; color: #94a3b8; transition: all 0.2s;
+        }
+        .radio-group input[type="radio"]:checked + label { background-color: #3b82f6; color: white; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Directional Drilling Trajectory Planner</h1>
+            <p class="text-slate-400 text-sm">Offshore Well Path Design: J-Type vs. S-Type Profiles</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <!-- Kuyu Tipi Seçimi -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-sky-900 shadow-xl flex justify-center gap-4 radio-group">
+                    <div>
+                        <input type="radio" id="type-j" name="wellType" value="J" checked onchange="updateSimulation()">
+                        <label for="type-j">J-Type (Build & Hold)</label>
+                    </div>
+                    <div>
+                        <input type="radio" id="type-s" name="wellType" value="S" onchange="updateSimulation()">
+                        <label for="type-s">S-Type (Build, Hold, Drop)</label>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Target & Kick-Off</h2>
+                    
+                    <div class="slider-label"><span>Target TVD (ft)</span> <span id="val-tvd" class="font-mono text-white">10000 ft</span></div>
+                    <input type="range" id="slider-tvd" min="6000" max="15000" step="100" value="10000" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label"><span>Kick-Off Point (KOP)</span> <span id="val-kop" class="font-mono text-emerald-300">3000 ft</span></div>
+                    <input type="range" id="slider-kop" min="1000" max="8000" step="100" value="3000" style="accent-color: #10b981;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-amber-900 shadow-[0_0_15px_rgba(245,158,11,0.1)] h-fit mt-2">
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-900 pb-2">Directional Parameters</h2>
+                    
+                    <div class="slider-label"><span>Max Inclination (θ)</span> <span id="val-angle" class="font-mono text-amber-300">45°</span></div>
+                    <input type="range" id="slider-angle" min="10" max="75" step="1" value="45" style="accent-color: #f59e0b;">
+                    
+                    <div class="slider-label"><span>Build-Up Rate (BUR)</span> <span id="val-bur" class="font-mono text-orange-400">2.5 °/100ft</span></div>
+                    <input type="range" id="slider-bur" min="1.0" max="6.0" step="0.1" value="2.5" style="accent-color: #f97316;">
+                    
+                    <div id="dor-container" class="opacity-30 pointer-events-none transition-opacity">
+                        <div class="slider-label"><span>Drop-Off Rate (DOR)</span> <span id="val-dor" class="font-mono text-purple-400">2.0 °/100ft</span></div>
+                        <input type="range" id="slider-dor" min="1.0" max="6.0" step="0.1" value="2.0" style="accent-color: #a855f7;">
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas & KPI -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Measured Depth (MD)</div>
+                        <div id="kpi-md" class="text-2xl font-bold text-emerald-400">0 ft</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-blue-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Horizontal Departure</div>
+                        <div id="kpi-dep" class="text-2xl font-bold text-blue-400">0 ft</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-orange-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Build Radius (R1)</div>
+                        <div id="kpi-radius" class="text-2xl font-bold text-orange-400">0 ft</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Hold Section Length</div>
+                        <div id="kpi-hold" class="text-2xl font-bold text-purple-400">0 ft</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[550px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Vertical Section Profile</h3>
+                    <canvas id="drillCanvas" width="900" height="500" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10 text-right">
+                        <div class="text-white font-bold mb-2 border-b border-slate-600 pb-1">Rig Location (0,0)</div>
+                        <div class="flex items-center justify-end gap-2 mb-1"><span class="w-4 h-4 rounded-full bg-emerald-500"></span> KOP (Kick-Off)</div>
+                        <div class="flex items-center justify-end gap-2 mb-1"><span class="w-4 h-4 rounded-full bg-orange-500"></span> EOB (End of Build)</div>
+                        <div id="legend-eod" class="flex items-center justify-end gap-2 mb-1 hidden"><span class="w-4 h-4 rounded-full bg-purple-500"></span> SOD (Start of Drop)</div>
+                        <div class="flex items-center justify-end gap-2"><span class="w-4 h-4 rounded-full border-2 border-red-500 flex items-center justify-center"><div class="w-2 h-2 bg-red-500 rounded-full"></div></span> Target Hit</div>
+                    </div>
+                </div>
+
+                <!-- Durum / Uyarı Kutusu -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Calculating Trajectory...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('drillCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slTVD = document.getElementById('slider-tvd');
+        const slKOP = document.getElementById('slider-kop');
+        const slAngle = document.getElementById('slider-angle');
+        const slBUR = document.getElementById('slider-bur');
+        const slDOR = document.getElementById('slider-dor');
+
+        function updateSimulation() {
+            let isS_Type = document.getElementById('type-s').checked;
+            
+            // UI Toggle for DOR
+            let dorContainer = document.getElementById('dor-container');
+            let legendEOD = document.getElementById('legend-eod');
+            if (isS_Type) {
+                dorContainer.classList.remove('opacity-30', 'pointer-events-none');
+                legendEOD.classList.remove('hidden');
+            } else {
+                dorContainer.classList.add('opacity-30', 'pointer-events-none');
+                legendEOD.classList.add('hidden');
+            }
+
+            let targetTVD = parseFloat(slTVD.value);
+            let KOP = parseFloat(slKOP.value);
+            let maxAngle = parseFloat(slAngle.value);
+            let BUR = parseFloat(slBUR.value);
+            let DOR = parseFloat(slDOR.value);
+
+            document.getElementById('val-tvd').innerText = targetTVD + " ft";
+            document.getElementById('val-kop').innerText = KOP + " ft";
+            document.getElementById('val-angle').innerText = maxAngle + "°";
+            document.getElementById('val-bur').innerText = BUR.toFixed(1) + " °/100ft";
+            document.getElementById('val-dor').innerText = DOR.toFixed(1) + " °/100ft";
+
+            // Math Constraints & Setup
+            if (KOP >= targetTVD) { KOP = targetTVD - 500; slKOP.value = KOP; }
+
+            let R1 = 5729.58 / BUR; // Radius of curvature for build (ft)
+            let R2 = 5729.58 / DOR; // Radius of curvature for drop (ft)
+            let maxRad = maxAngle * Math.PI / 180;
+
+            // Section 1: Vertical
+            let md_vert = KOP;
+
+            // Section 2: Build
+            let md_build = (maxAngle / BUR) * 100;
+            let tvd_build = R1 * Math.sin(maxRad);
+            let dep_build = R1 * (1 - Math.cos(maxRad));
+
+            // Section 4 (Pre-calculate): Drop (Only for S-Type)
+            let md_drop = 0, tvd_drop = 0, dep_drop = 0;
+            if (isS_Type) {
+                md_drop = (maxAngle / DOR) * 100;
+                tvd_drop = R2 * Math.sin(maxRad); // Drops back to vertical (0 degrees)
+                dep_drop = R2 * (1 - Math.cos(maxRad));
+            }
+
+            // Section 3: Hold
+            // Hold TVD is what's left after Build and Drop TVD components
+            let tvd_hold = targetTVD - KOP - tvd_build - tvd_drop;
+            
+            let insightBox = document.getElementById('insight-box');
+            let isFeasible = tvd_hold >= 0;
+
+            let md_hold = 0, dep_hold = 0;
+            let total_md = 0, total_dep = 0;
+
+            if (isFeasible) {
+                md_hold = tvd_hold / Math.cos(maxRad);
+                dep_hold = md_hold * Math.sin(maxRad);
+                
+                total_md = md_vert + md_build + md_hold + md_drop;
+                total_dep = dep_build + dep_hold + dep_drop;
+
+                // Update KPIs
+                document.getElementById('kpi-md').innerText = Math.round(total_md).toLocaleString() + " ft";
+                document.getElementById('kpi-dep').innerText = Math.round(total_dep).toLocaleString() + " ft";
+                document.getElementById('kpi-radius').innerText = Math.round(R1) + " ft";
+                document.getElementById('kpi-hold').innerText = Math.round(md_hold).toLocaleString() + " ft";
+
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ TRAJECTORY FEASIBLE <br>
+                    <span class='text-xs font-normal'>Profile successfully hits Target TVD at horizontal departure of ${Math.round(total_dep)} ft. Torque & Drag modeling recommended next.</span>`;
+            } else {
+                document.getElementById('kpi-md').innerText = "ERROR";
+                document.getElementById('kpi-dep').innerText = "ERROR";
+                document.getElementById('kpi-radius').innerText = Math.round(R1) + " ft";
+                document.getElementById('kpi-hold').innerText = "0 ft";
+
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all animate-pulse";
+                insightBox.innerHTML = `🚨 INFEASIBLE TRAJECTORY <br>
+                    <span class='text-xs font-normal'>Target TVD reached before Build/Drop sections can complete. Decrease Max Angle, increase KOP depth, or increase BUR/DOR.</span>`;
+            }
+
+            // Generate Path Points for Drawing
+            let path = [];
+            let milestones = { kop: null, eob: null, sod: null, target: null };
+
+            if (isFeasible) {
+                let step = 50; // ft MD
+                for(let md = 0; md <= total_md; md += step) {
+                    let tvd = 0, dep = 0, currentAngle = 0;
+                    
+                    if (md <= md_vert) { // Vertical
+                        tvd = md; dep = 0;
+                    } 
+                    else if (md <= md_vert + md_build) { // Building
+                        let s = md - md_vert;
+                        currentAngle = (s / 100) * BUR;
+                        let aRad = currentAngle * Math.PI / 180;
+                        tvd = KOP + R1 * Math.sin(aRad);
+                        dep = R1 * (1 - Math.cos(aRad));
+                    } 
+                    else if (md <= md_vert + md_build + md_hold) { // Holding
+                        let s = md - md_vert - md_build;
+                        tvd = KOP + tvd_build + s * Math.cos(maxRad);
+                        dep = dep_build + s * Math.sin(maxRad);
+                    } 
+                    else if (isS_Type) { // Dropping
+                        let s = md - md_vert - md_build - md_hold;
+                        currentAngle = maxAngle - ((s / 100) * DOR);
+                        let aRad = currentAngle * Math.PI / 180;
+                        let start_drop_tvd = KOP + tvd_build + tvd_hold;
+                        let start_drop_dep = dep_build + dep_hold;
+                        
+                        // Geometry of dropping curve
+                        tvd = start_drop_tvd + R2 * (Math.sin(maxRad) - Math.sin(aRad));
+                        dep = start_drop_dep + R2 * (Math.cos(aRad) - Math.cos(maxRad));
+                    }
+                    path.push({tvd: tvd, dep: dep});
+                }
+                
+                // Add exact final point
+                path.push({tvd: targetTVD, dep: total_dep});
+
+                // Set milestones for drawing nodes
+                milestones.kop = {tvd: KOP, dep: 0};
+                milestones.eob = {tvd: KOP + tvd_build, dep: dep_build};
+                if(isS_Type) {
+                    milestones.sod = {tvd: KOP + tvd_build + tvd_hold, dep: dep_build + dep_hold};
+                }
+                milestones.target = {tvd: targetTVD, dep: total_dep};
+            }
+
+            drawGraph(path, milestones, targetTVD, Math.max(10000, total_dep * 1.2), isFeasible);
+        }
+
+        function drawGraph(path, milestones, maxTVD, maxDep, isFeasible) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 70; const padR = 40; const padT = 30; const padB = 40;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            // X-Axis (Departure): 0 to ~10,000+
+            // Y-Axis (TVD): 0 to 15,000 (Reversed!)
+            let X_MAX = Math.max(8000, maxDep);
+            let Y_MAX = 15000;
+
+            const getX = (dep) => padL + (dep / X_MAX) * chartW;
+            const getY = (tvd) => padT + (tvd / Y_MAX) * chartH; // Reversed: 0 is at top
+
+            // Draw Grid
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            
+            // X-Axis (Departure) Grid
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for(let d = 0; d <= X_MAX; d += 2000) {
+                let x = getX(d);
+                ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + chartH); ctx.stroke();
+                ctx.fillText(d, x, padT + chartH + 5);
+            }
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Horizontal Departure (ft)", W/2, H - 15);
+
+            // Y-Axis (TVD) Grid
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            for(let t = 0; t <= Y_MAX; t += 2000) {
+                let y = getY(t);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+                ctx.fillText(t, padL - 10, y);
+            }
+            ctx.save(); ctx.translate(20, H/2); ctx.rotate(-Math.PI/2); ctx.textAlign = 'center';
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("True Vertical Depth, TVD (ft)", 0, 0); ctx.restore();
+
+            // Draw Target TVD Line
+            let targetY = getY(slTVD.value);
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(padL, targetY); ctx.lineTo(W - padR, targetY); ctx.stroke();
+            ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillText("Target TVD (" + slTVD.value + " ft)", padL + 10, targetY - 5);
+            ctx.setLineDash([]);
+
+            if (!isFeasible) return;
+
+            // Draw Trajectory Line
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            path.forEach((pt, i) => {
+                let x = getX(pt.dep); let y = getY(pt.tvd);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+
+            // Function to draw a milestone node
+            const drawNode = (node, color, label) => {
+                if(!node) return;
+                let x = getX(node.dep); let y = getY(node.tvd);
+                ctx.fillStyle = color;
+                ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                ctx.font = '10px sans-serif';
+                ctx.fillText(label, x + 10, y);
+            };
+
+            drawNode(milestones.kop, '#10b981', "KOP");
+            drawNode(milestones.eob, '#f97316', "EOB");
+            if (milestones.sod) drawNode(milestones.sod, '#a855f7', "SOD");
+
+            // Draw Target Hit
+            let tX = getX(milestones.target.dep); let tY = getY(milestones.target.tvd);
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(tX, tY, 8, 0, Math.PI*2); ctx.stroke();
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath(); ctx.arc(tX, tY, 3, 0, Math.PI*2); ctx.fill();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            ctx.fillText(`Dep: ${Math.round(milestones.target.dep)}'`, tX, tY + 12);
+        }
+
+        // Add Listeners
+        slTVD.addEventListener('input', updateSimulation);
+        slKOP.addEventListener('input', updateSimulation);
+        slAngle.addEventListener('input', updateSimulation);
+        slBUR.addEventListener('input', updateSimulation);
+        slDOR.addEventListener('input', updateSimulation);
+
+        // Run on load
+        setTimeout(updateSimulation, 100);
+
+    </script>
+</body>
+</html>
+```eof
+
+### Mülakatta Bu Canvas Nasıl Konuşur?
+1. **Fizibilite ve Dizayn:** Komiteye "J-Type" yörüngesini aç. KOP (Kick-off) derinliğini çok aşağılara (mesela 8000 ft) çek ve Açıyı (Max Inclination) yüksek ver. Sistem anında **"🚨 INFEASIBLE TRAJECTORY"** uyarısı verecektir. Sonra onlara de ki: *"İşte KOP noktasını bu kadar derine alırsak, hedef TVD'ye ulaşana kadar build-up (açı artırma) manevrasını tamamlayamayız. Bu yüzden yönlü sondaj planlamasında KOP derinliğini optimize etmemiz şarttır."*
+2. **Torque & Drag Riski:** S-Type (Build, Hold, Drop) profilini seç. BUR (Build-Up Rate) değerini 5-6 °/100ft gibi uçuk değerlere getir. *"Bu kadar dar açıyla (yüksek BUR) dönersek Radius çok küçülür, casing aşınması (casing wear) ve tork/sürtünme (Torque & Drag) problemleri yaşarız"* diyerek tam bir saha mühendisi (TPIC'te staj yapan adam) perspektifiyle konuşursun.
+
+Bu ekran tek başına senin sondaj matematiğine ve üç boyutlu kuyu mimarisine ne kadar hakim olduğunu gösterecek. Başka eklemem gereken, aklına takılan veya değiştirmek istediğin bir parametre var mı kanka?

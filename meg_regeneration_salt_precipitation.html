@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MEG Regeneration & Salt Precipitation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-purple-400 mb-2">Onshore Process: MEG Regeneration & Salt Precipitation</h1>
+            <p class="text-slate-400 text-sm">Rich MEG Distillation, Desalination Limits, and Reboiler Scaling Bottlenecks</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-blue-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-widest mb-4 border-b border-blue-900 pb-2">Wellstream Inputs</h2>
+                    
+                    <div class="slider-label"><span>Formation Water Rate</span> <span id="val-water" class="font-mono text-white">500 bbl/d</span></div>
+                    <input type="range" id="slider-water" min="0" max="3000" step="100" value="500" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label"><span>Water Salinity (TDS)</span> <span id="val-salt" class="font-mono text-slate-300">20,000 ppm</span></div>
+                    <input type="range" id="slider-salt" min="5000" max="150000" step="5000" value="20000" style="accent-color: #94a3b8;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-purple-900 shadow-[0_0_15px_rgba(168,85,247,0.15)] h-fit mt-2">
+                    <h2 class="text-sm font-bold text-purple-400 uppercase tracking-widest mb-4 border-b border-purple-900 pb-2">MRU Operating Params</h2>
+                    
+                    <div class="slider-label"><span>Reboiler Temp</span> <span id="val-temp" class="font-mono text-orange-400">135 °C</span></div>
+                    <input type="range" id="slider-temp" min="80" max="180" step="5" value="135" style="accent-color: #f97316;">
+                    
+                    <div class="slider-label"><span>Desalination Capacity</span> <span id="val-desal" class="font-mono text-emerald-300">1000 kg/hr</span></div>
+                    <input type="range" id="slider-desal" min="200" max="3000" step="100" value="1000" style="accent-color: #10b981;">
+                </div>
+
+            </div>
+
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-blue-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Salt Intake Load</div>
+                        <div id="kpi-intake" class="text-2xl font-bold text-blue-400">0 kg/hr</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Lean MEG Purity</div>
+                        <div id="kpi-purity" class="text-2xl font-bold text-purple-400">0 %</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-slate-400 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Accumulated Salt</div>
+                        <div id="kpi-accum" class="text-2xl font-bold text-slate-300">0 kg</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-red-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Reboiler Scaling</div>
+                        <div id="kpi-status" class="text-xl font-bold text-emerald-400 mt-1">CLEAN</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[480px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">MEG Regeneration Unit (MRU) Flow Diagram</h3>
+                    <canvas id="mruCanvas" width="900" height="400" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10">
+                        <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#3b82f6] rounded-full"></span> Rich MEG (Water + MEG)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#a855f7] rounded-full"></span> Lean MEG (Pure)</div>
+                        <div class="flex items-center gap-2 mb-2"><span class="w-3 h-3 bg-[#f8fafc] rounded-full opacity-50"></span> Water Vapor (Steam)</div>
+                        <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#cbd5e1] border border-slate-500"></span> Salt Crystals (Precipitation)</div>
+                    </div>
+                </div>
+
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Initializing Processing Facility...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mruCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slWater = document.getElementById('slider-water');
+        const slSalt = document.getElementById('slider-salt');
+        const slTemp = document.getElementById('slider-temp');
+        const slDesal = document.getElementById('slider-desal');
+
+        // Physics State
+        let saltAccumulated = 0; // kg
+        let isPlugged = false;
+        let pWaterRate = 500;
+        let pSalinity = 20000;
+        let pTemp = 135;
+        let pDesalCap = 1000;
+        
+        let saltIntakeRate = 0; // kg/hr
+        let megPurity = 0; // %
+
+        // Animation Particles
+        let particles = [];
+        let steamParticles = [];
+        
+        // Reboiler Geometry Constants
+        const REBOILER_X = 580;
+        const REBOILER_Y = 220;
+        const REBOILER_W = 140;
+        const REBOILER_H = 160;
+
+        function updatePhysics() {
+            pWaterRate = parseFloat(slWater.value);
+            pSalinity = parseFloat(slSalt.value);
+            pTemp = parseFloat(slTemp.value);
+            pDesalCap = parseFloat(slDesal.value);
+
+            document.getElementById('val-water').innerText = pWaterRate + " bbl/d";
+            document.getElementById('val-salt').innerText = pSalinity.toLocaleString() + " ppm";
+            document.getElementById('val-temp').innerText = pTemp + " °C";
+            document.getElementById('val-desal').innerText = pDesalCap + " kg/hr";
+
+            // Calculation
+            saltIntakeRate = (pWaterRate * 159 * (pSalinity / 1000000)) / 24;
+
+            if (pTemp < 100) {
+                megPurity = 50; 
+            } else if (pTemp > 165) {
+                megPurity = 85; 
+            } else {
+                megPurity = 50 + ((pTemp - 100) / 40) * 45;
+                if (megPurity > 95) megPurity = 95; 
+            }
+
+            document.getElementById('kpi-intake').innerText = saltIntakeRate.toFixed(1) + " kg/hr";
+            document.getElementById('kpi-purity').innerText = megPurity.toFixed(1) + " %";
+
+            // Salt Accumulation
+            let netSalt = saltIntakeRate - pDesalCap;
+            if (netSalt > 0 && pTemp >= 100) {
+                saltAccumulated += netSalt * 0.05; 
+            } else {
+                saltAccumulated -= pDesalCap * 0.02; 
+                if (saltAccumulated < 0) saltAccumulated = 0;
+            }
+
+            const MAX_SALT = 5000; 
+            isPlugged = saltAccumulated > MAX_SALT;
+
+            document.getElementById('kpi-accum').innerText = Math.floor(saltAccumulated).toLocaleString() + " kg";
+            
+            let statusEl = document.getElementById('kpi-status');
+            let insightBox = document.getElementById('insight-box');
+
+            if (isPlugged) {
+                statusEl.innerText = "PLUGGED (TRIP)";
+                statusEl.className = "text-xl font-bold mt-1 text-red-500 animate-pulse";
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all animate-pulse";
+                insightBox.innerHTML = `🚨 FACILITY TRIP: REBOILER PLUGGED! <br>
+                    <span class='text-xs font-normal'>Salt intake exceeded desalination capacity. Massive salt precipitation (Scaling) has completely blocked the heat exchanger tubes. Total facility shutdown required for maintenance.</span>`;
+            } else if (saltAccumulated > MAX_SALT * 0.5) {
+                statusEl.innerText = "SCALING (WARNING)";
+                statusEl.className = "text-xl font-bold mt-1 text-amber-400";
+                insightBox.className = "bg-amber-900/40 border border-amber-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `⚠️ SEVERE SCALING IN PROGRESS <br>
+                    <span class='text-xs font-normal'>Salt is crystallizing faster than it can be removed. Heat transfer efficiency dropping. Increase Desalination Capacity or reduce well flow!</span>`;
+            } else if (pTemp < 100) {
+                statusEl.innerText = "NO BOILING";
+                statusEl.className = "text-xl font-bold mt-1 text-blue-400";
+                insightBox.className = "bg-blue-900/40 border border-blue-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `🧊 POOR REGENERATION <br>
+                    <span class='text-xs font-normal'>Temperature is too low to boil water. Rich MEG is passing through without being regenerated. Hydrate risk offshore!</span>`;
+            } else if (pTemp > 160) {
+                statusEl.innerText = "MEG DEGRADATION";
+                statusEl.className = "text-xl font-bold mt-1 text-orange-400";
+                insightBox.className = "bg-orange-900/40 border border-orange-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `🔥 THERMAL DEGRADATION <br>
+                    <span class='text-xs font-normal'>Temperature is dangerously high. MEG chemicals are thermally decomposing into corrosive acids. Drop temperature immediately!</span>`;
+            } else {
+                statusEl.innerText = "CLEAN (STABLE)";
+                statusEl.className = "text-xl font-bold mt-1 text-emerald-400";
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ MRU STABLE <br>
+                    <span class='text-xs font-normal'>Water is effectively boiling off. Desalination unit is handling the salt load. High-purity Lean MEG is returning to the subsea wells.</span>`;
+            }
+        }
+
+        // --- GÜNCELLENMİŞ KUSURSUZ ROTA FİZİĞİ ---
+        class FluidParticle {
+            constructor() { this.reset(); }
+            reset() {
+                this.active = true;
+                this.route = 0;
+                this.x = Math.random() * 50; 
+                this.y = REBOILER_Y + 30 + (Math.random() - 0.5) * 6; // Boru içinde
+                this.vx = 4 + Math.random();
+                this.vy = 0;
+                this.isSalt = Math.random() < (pSalinity / 150000);
+            }
+            update() {
+                if (!this.active || isPlugged) return;
+
+                if (this.route === 0) { 
+                    // 1. Yatay giriş borusunda (Inlet)
+                    this.x += this.vx;
+                    if (this.x >= REBOILER_X + 30) {
+                        this.x = REBOILER_X + 30 + (Math.random()-0.5)*6;
+                        this.route = 1;
+                        this.vx = 0;
+                        this.vy = 3 + Math.random(); // Musluktan aşağı dön
+                    }
+                } 
+                else if (this.route === 1) { 
+                    // 2. Musluktan aşağı dökülüş (Downspout)
+                    this.y += this.vy;
+                    if (this.y >= REBOILER_Y + 50) {
+                        this.route = 2;
+                        this.vx = (Math.random() - 0.2) * 2; // Serbest düşüş sıçraması
+                    }
+                }
+                else if (this.route === 2) { 
+                    // 3. Tank içine serbest düşüş
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.vy += 0.2; // Yerçekimi
+                    
+                    let liquidSurfaceY = REBOILER_Y + REBOILER_H - 60;
+                    if (this.y >= liquidSurfaceY) {
+                        this.route = 3; // Sıvı havuzuna çarptı
+                    }
+                }
+                else if (this.route === 3) { 
+                    // 4. Kaynayan sıvı havuzunun içinde (Boiling Pool)
+                    this.x += 1 + Math.random(); // Yavaşça sağa (çıkışa) kay
+                    this.y += (Math.random() - 0.5) * 2; // Kaynama titremesi
+                    
+                    // Havuz sınırları içinde tut
+                    if (this.y < REBOILER_Y + REBOILER_H - 60) this.y = REBOILER_Y + REBOILER_H - 60;
+                    if (this.y > REBOILER_Y + REBOILER_H - 10) this.y = REBOILER_Y + REBOILER_H - 10;
+
+                    // Tuz çökelme mantığı
+                    if (this.isSalt && pTemp >= 100) {
+                        this.active = false; // Tuz dibe çöker
+                    }
+                    
+                    // Sağ taraftaki çıkış borusuna girdi
+                    if (this.x >= REBOILER_X + REBOILER_W) {
+                        this.route = 4;
+                        this.y = REBOILER_Y + REBOILER_H - 20 + (Math.random()-0.5)*6;
+                        this.vx = 4 + Math.random();
+                        this.vy = 0;
+                    }
+                }
+                else if (this.route === 4) { 
+                    // 5. Çıkış borusu (Outlet pipe)
+                    this.x += this.vx;
+                    if (this.x > canvas.width) this.active = false;
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                if (this.isSalt && this.route === 3) {
+                    ctx.fillStyle = '#cbd5e1'; // Tuz
+                    ctx.rect(this.x - 2, this.y - 2, 4, 4);
+                } else if (this.route === 4) {
+                    ctx.fillStyle = '#a855f7'; // Çıkan Lean MEG (Mor)
+                    ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                } else {
+                    ctx.fillStyle = '#3b82f6'; // Giren Rich MEG (Mavi)
+                    ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                }
+                ctx.fill();
+            }
+        }
+
+        // --- BUHAR (STEAM) İÇİN KUSURSUZ BACA ROTASI ---
+        class SteamParticle {
+            constructor() { this.reset(); }
+            reset() {
+                this.route = 0;
+                this.x = REBOILER_X + 20 + Math.random() * (REBOILER_W - 40);
+                this.y = REBOILER_Y + REBOILER_H - 60; // Sıvı yüzeyinden başlar
+                this.vx = (Math.random() - 0.5) * 1;
+                this.vy = - (1 + Math.random() * 2);
+                this.life = 1.0;
+                this.active = (pTemp >= 100 && !isPlugged && pWaterRate > 0);
+            }
+            update() {
+                if (!this.active) return;
+                
+                if (this.route === 0) {
+                    // 1. Tank içinde yükseliş
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    // Bacaya doğru (merkeze) huni gibi daral
+                    if (this.y < REBOILER_Y + 40) {
+                        let targetX = REBOILER_X + REBOILER_W/2;
+                        this.x += (targetX - this.x) * 0.1;
+                    }
+                    // Bacanın girişine geldi
+                    if (this.y <= REBOILER_Y) {
+                        this.route = 1;
+                        this.x = REBOILER_X + REBOILER_W/2 + (Math.random()-0.5)*4;
+                        this.vx = 0;
+                        this.vy = -3;
+                    }
+                } else if (this.route === 1) {
+                    // 2. Bacadan dikey çıkış
+                    this.y += this.vy;
+                    // Bacanın dirseğine geldi
+                    if (this.y <= 50) {
+                        this.route = 2;
+                        this.y = 50 + (Math.random()-0.5)*4;
+                        this.vx = 4;
+                        this.vy = 0;
+                    }
+                } else if (this.route === 2) {
+                    // 3. Egzozdan sağa doğru çıkış
+                    this.x += this.vx;
+                    this.life -= 0.01;
+                    if (this.x > canvas.width || this.life <= 0) this.reset();
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.fillStyle = `rgba(248, 250, 252, ${this.life * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4 + (1 - this.life) * 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        for(let i=0; i<150; i++) particles.push(new FluidParticle());
+        for(let i=0; i<50; i++) steamParticles.push(new SteamParticle());
+
+        function drawScenery() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // --- 1. DIŞ BORULAR (Gri) ---
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 16; ctx.lineJoin = 'round';
+            
+            // Giriş Borusu ve Downspout
+            ctx.beginPath(); 
+            ctx.moveTo(0, REBOILER_Y + 30); 
+            ctx.lineTo(REBOILER_X + 30, REBOILER_Y + 30); 
+            ctx.lineTo(REBOILER_X + 30, REBOILER_Y + 50); 
+            ctx.stroke();
+            
+            // Çıkış Borusu
+            ctx.beginPath(); 
+            ctx.moveTo(REBOILER_X + REBOILER_W, REBOILER_Y + REBOILER_H - 20); 
+            ctx.lineTo(canvas.width, REBOILER_Y + REBOILER_H - 20); 
+            ctx.stroke();
+            
+            // Buhar Egzoz Borusu (Yukarı ve Sağa)
+            ctx.beginPath(); 
+            ctx.moveTo(REBOILER_X + REBOILER_W/2, REBOILER_Y); 
+            ctx.lineTo(REBOILER_X + REBOILER_W/2, 50); 
+            ctx.lineTo(canvas.width, 50); 
+            ctx.stroke();
+
+            // --- 2. İÇ BORU BOŞLUKLARI (Siyah/Koyu Lacivert) ---
+            ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 8;
+            ctx.beginPath(); ctx.moveTo(0, REBOILER_Y + 30); ctx.lineTo(REBOILER_X + 30, REBOILER_Y + 30); ctx.lineTo(REBOILER_X + 30, REBOILER_Y + 50); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(REBOILER_X + REBOILER_W, REBOILER_Y + REBOILER_H - 20); ctx.lineTo(canvas.width, REBOILER_Y + REBOILER_H - 20); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(REBOILER_X + REBOILER_W/2, REBOILER_Y); ctx.lineTo(REBOILER_X + REBOILER_W/2, 50); ctx.lineTo(canvas.width, 50); ctx.stroke();
+
+            // --- 3. REBOILER TANK (Gövde) ---
+            ctx.fillStyle = '#64748b'; // Dış Şasi
+            ctx.beginPath(); ctx.roundRect(REBOILER_X, REBOILER_Y, REBOILER_W, REBOILER_H, 15); ctx.fill();
+            
+            ctx.fillStyle = '#1e293b'; // İç Boşluk
+            ctx.beginPath(); ctx.roundRect(REBOILER_X + 5, REBOILER_Y + 5, REBOILER_W - 10, REBOILER_H - 10, 10); ctx.fill();
+
+            // --- 4. TANK İÇİ SIVI HAVUZU (Boiling Pool) ---
+            let liquidSurfaceY = REBOILER_Y + REBOILER_H - 60;
+            let poolHeight = 55;
+            
+            ctx.save();
+            // Havuzun dışarı taşmaması için iç tanka göre kırp (clip)
+            ctx.beginPath(); ctx.roundRect(REBOILER_X + 5, REBOILER_Y + 5, REBOILER_W - 10, REBOILER_H - 10, 10); ctx.clip();
+            
+            // Gradyan renk (Suyun buharlaşıp MEG'in yoğunlaştığını gösterir)
+            let poolGrad = ctx.createLinearGradient(0, liquidSurfaceY, 0, REBOILER_Y + REBOILER_H);
+            poolGrad.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Yüzey sulu
+            poolGrad.addColorStop(1, 'rgba(168, 85, 247, 0.6)'); // Dip yoğun MEG
+            
+            ctx.fillStyle = poolGrad;
+            ctx.fillRect(REBOILER_X + 5, liquidSurfaceY, REBOILER_W - 10, poolHeight);
+            
+            // Kaynama baloncukları
+            if (pTemp >= 100 && !isPlugged) {
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                for(let i=0; i<15; i++) {
+                    ctx.beginPath();
+                    ctx.arc(REBOILER_X + 10 + Math.random()*(REBOILER_W-20), liquidSurfaceY + Math.random()*15, Math.random()*4, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore(); // Kırpmayı kaldır
+
+            // --- 5. ISITICI BORULAR (Fire Tubes) ---
+            ctx.fillStyle = pTemp > 160 ? '#ef4444' : (pTemp >= 100 ? '#f97316' : '#94a3b8');
+            for(let i=0; i<3; i++) {
+                ctx.fillRect(REBOILER_X + 15, REBOILER_Y + REBOILER_H - 40 - (i*15), REBOILER_W - 30, 8);
+            }
+
+            // --- 6. TUZ ÇÖKELMESİ (Salt Accumulation) ---
+            if (saltAccumulated > 0) {
+                const MAX_SALT = 5000;
+                let saltRatio = Math.min(saltAccumulated / MAX_SALT, 1.0);
+                let saltH = saltRatio * 110; // Max 110px yüksekliğe kadar dağ olur
+                
+                ctx.fillStyle = '#cbd5e1'; 
+                ctx.beginPath();
+                ctx.moveTo(REBOILER_X + 5, REBOILER_Y + REBOILER_H - 5);
+                ctx.lineTo(REBOILER_X + REBOILER_W - 5, REBOILER_Y + REBOILER_H - 5);
+                
+                // Tırtıklı dağ tepe çizgisi
+                for(let i=REBOILER_X + REBOILER_W - 5; i>=REBOILER_X + 5; i-=10) {
+                    ctx.lineTo(i, REBOILER_Y + REBOILER_H - 5 - saltH + (Math.random()*6 - 3));
+                }
+                ctx.fill();
+
+                if (isPlugged) {
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                    ctx.beginPath(); ctx.roundRect(REBOILER_X + 5, REBOILER_Y + 5, REBOILER_W - 10, REBOILER_H - 10, 10); ctx.fill();
+                    ctx.fillStyle = '#fff'; ctx.font="bold 20px Arial"; ctx.textAlign="center";
+                    ctx.fillText("PLUGGED!", REBOILER_X + REBOILER_W/2, REBOILER_Y + REBOILER_H/2 - 20);
+                }
+            }
+
+            // --- 7. ETİKETLER ---
+            ctx.fillStyle = '#cbd5e1'; ctx.font="12px Arial"; ctx.textAlign="left";
+            ctx.fillText("Rich MEG (From Subsea)", 20, REBOILER_Y + 20);
+            ctx.fillText("Lean MEG (To Subsea)", REBOILER_X + REBOILER_W + 20, REBOILER_Y + REBOILER_H - 30);
+            ctx.fillText("Water Vapor (Exhaust)", REBOILER_X + REBOILER_W/2 + 20, 40);
+            ctx.fillStyle = '#fff'; ctx.font="bold 14px Arial"; ctx.textAlign="center";
+            ctx.fillText("MRU REBOILER", REBOILER_X + REBOILER_W/2, REBOILER_Y + 25);
+        }
+
+        function animate() {
+            updatePhysics();
+            drawScenery();
+
+            let flowMultiplier = pWaterRate / 500;
+            
+            // Eğer tıkanma yoksa sisteme yeni parçacık besle
+            if (!isPlugged && Math.random() < flowMultiplier) {
+                for(let i=0; i<3; i++) particles.push(new FluidParticle());
+            }
+
+            particles.forEach(p => { p.update(); p.draw(); });
+            particles = particles.filter(p => p.active);
+
+            steamParticles.forEach(p => { 
+                p.active = (pTemp >= 100 && !isPlugged && pWaterRate > 0);
+                p.update(); 
+                p.draw(); 
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Listeners
+        slWater.addEventListener('input', updatePhysics);
+        slSalt.addEventListener('input', updatePhysics);
+        slTemp.addEventListener('input', updatePhysics);
+        slDesal.addEventListener('input', updatePhysics);
+
+        // Start
+        updatePhysics();
+        animate();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mud Window & Casing Design Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 30px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1300px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Offshore Mud Window & Casing Design</h1>
+            <p class="text-slate-400 text-sm">Pore Pressure (P<sub>p</sub>), Fracture Pressure (F<sub>p</sub>), and Safe Mud Weight Window for Deepwater Gas Field</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Data -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2">Well Parameters</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-slate-300"><span>Target TVD (Reservoir)</span> <span class="font-mono text-white">19,585 ft</span></div>
+                        <div class="slider-label text-slate-300 mt-2"><span>Water Depth (Offshore)</span> <span class="font-mono text-blue-400">3,000 ft</span></div>
+                    </div>
+
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2 mt-6">Casing Shoe Settings</h2>
+                    
+                    <div class="text-xs text-slate-400 mb-4 bg-slate-900 p-3 rounded border border-slate-700">
+                        Adjust casing shoe depths to ensure the Mud Weight (MW) stays safely right of Pore Pressure (P<sub>p</sub>) and left of Fracture Pressure (F<sub>p</sub>).
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="slider-label text-amber-400"><span>Surface Casing (20")</span> <span id="val-surf" class="font-mono">4700 ft</span></div>
+                        <input type="range" id="slider-surf" min="3500" max="6000" step="100" value="4700" style="accent-color: #f59e0b;">
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-emerald-400"><span>Intermediate I (13 3/8")</span> <span id="val-int1" class="font-mono">7400 ft</span></div>
+                        <input type="range" id="slider-int1" min="6500" max="12000" step="100" value="7400" style="accent-color: #10b981;">
+                    </div>
+
+                    <div class="mb-2">
+                        <div class="slider-label text-purple-400"><span>Intermediate II (9 5/8")</span> <span id="val-int2" class="font-mono">18500 ft</span></div>
+                        <input type="range" id="slider-int2" min="15000" max="19000" step="100" value="18500" style="accent-color: #a855f7;">
+                    </div>
+                </div>
+
+                <div id="status-box" class="bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-slate-300 text-sm font-semibold transition-all flex items-center justify-center text-center">
+                    ANALYZING MUD WINDOW...
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas (Graph) -->
+            <div class="xl:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[700px]">
+                <canvas id="mudCanvas" width="800" height="680" class="w-full h-full"></canvas>
+                
+                <!-- Legend -->
+                <div class="absolute top-4 right-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Gradient Legend (ppg)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 bg-[#ef4444]"></span> Fracture Pressure (F<sub>p</sub>)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 bg-[#3b82f6]"></span> Pore Pressure (P<sub>p</sub>)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 border-y-2 border-dashed border-[#10b981]"></span> Mud Weight (Step Design)</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-slate-400">
+                        Target: Avoid Kicks (Left) & Losses (Right)
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mudCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slSurf = document.getElementById('slider-surf');
+        const slInt1 = document.getElementById('slider-int1');
+        const slInt2 = document.getElementById('slider-int2');
+        const TOTAL_DEPTH = 20000;
+        
+        // Data approximation based on thesis Tables 10 & 12
+        function getPp(depth) {
+            if (depth < 3000) return 8.5; // Seawater
+            if (depth < 8000) return 8.5 + (depth-3000)*0.00005; // Normal
+            if (depth < 18000) return 8.75 + (depth-8000)*0.000133; // Abnormal Pressure Zone
+            if (depth < 19685) return 10.08 - (depth-18000)*0.001; // Transition
+            return 8.33; // Reservoir Gas Gradient
+        }
+
+        function getFp(depth) {
+            if (depth < 3000) return 8.5;
+            if (depth < 6000) return 8.5 + (depth-3000)*0.00085;
+            if (depth < 10000) return 11.06 + (depth-6000)*0.00059;
+            return 13.42 + (depth-10000)*0.00031; // Eaton's Correlation Approximation
+        }
+
+        function drawGraph() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const padL = 60; const padR = 20; const padT = 40; const padB = 40;
+            const GW = canvas.width - padL - padR;
+            const GH = canvas.height - padT - padB;
+            
+            // X Axis: EMW (ppg) from 8 to 18
+            const minX = 8; const maxX = 18;
+            function getX(ppg) { return padL + ((ppg - minX)/(maxX - minX)) * GW; }
+            
+            // Y Axis: Depth (ft) from 0 to 20000
+            const maxY = TOTAL_DEPTH;
+            function getY(depth) { return padT + (depth / maxY) * GH; }
+
+            // Grid Lines
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+            for (let i = 8; i <= 18; i++) {
+                let x = getX(i);
+                ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + GH); ctx.stroke();
+                ctx.fillText(i, x, padT - 10);
+            }
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (let d = 0; d <= 20000; d += 2000) {
+                let y = getY(d);
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + GW, y); ctx.stroke();
+                ctx.fillText(d, padL - 10, y);
+            }
+
+            // Draw Pp (Blue) and Fp (Red) Curves
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.strokeStyle = '#3b82f6';
+            for (let d = 3000; d <= 20000; d += 100) {
+                if(d===3000) ctx.moveTo(getX(getPp(d)), getY(d));
+                else ctx.lineTo(getX(getPp(d)), getY(d));
+            }
+            ctx.stroke();
+
+            ctx.beginPath(); ctx.strokeStyle = '#ef4444';
+            for (let d = 3000; d <= 20000; d += 100) {
+                if(d===3000) ctx.moveTo(getX(getFp(d)), getY(d));
+                else ctx.lineTo(getX(getFp(d)), getY(d));
+            }
+            ctx.stroke();
+
+            // Draw Mud Weight / Casing Design (Step function)
+            let surfD = parseInt(slSurf.value);
+            let int1D = parseInt(slInt1.value);
+            let int2D = parseInt(slInt2.value);
+            let prodD = 19585; // Target
+            
+            // Required MWs (Pp + Safety Margin)
+            let mwSurf = getPp(surfD) + 0.3;
+            let mwInt1 = getPp(int1D) + 0.3;
+            let mwInt2 = getPp(int2D) + 0.5;
+            let mwProd = getPp(prodD) + 1.7; // Overbalanced drilling chosen in thesis
+
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 3; ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            
+            // Surface
+            ctx.moveTo(getX(mwSurf), getY(3000)); ctx.lineTo(getX(mwSurf), getY(surfD));
+            ctx.lineTo(getX(mwInt1), getY(surfD)); // Casing set, MW increased
+            
+            // Int 1
+            ctx.lineTo(getX(mwInt1), getY(int1D));
+            ctx.lineTo(getX(mwInt2), getY(int1D)); 
+            
+            // Int 2
+            ctx.lineTo(getX(mwInt2), getY(int2D));
+            ctx.lineTo(getX(mwProd), getY(int2D)); 
+
+            // Prod
+            ctx.lineTo(getX(mwProd), getY(prodD));
+            
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // Draw Casing Shoe Indicators
+            function drawShoe(depth, color, label) {
+                let y = getY(depth);
+                ctx.fillStyle = color;
+                ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+15, y-10); ctx.lineTo(padL+15, y+10); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+                ctx.fillText(label, padL + 20, y);
+            }
+            drawShoe(3000, '#3b82f6', "Mudline");
+            drawShoe(surfD, '#f59e0b', "Surface");
+            drawShoe(int1D, '#10b981', "Intermediate I");
+            drawShoe(int2D, '#a855f7', "Intermediate II");
+            drawShoe(prodD, '#fff', "TD");
+
+            // Validation Check
+            checkSafety(surfD, int1D, int2D, mwSurf, mwInt1, mwInt2, mwProd);
+        }
+
+        function checkSafety(surfD, int1D, int2D, mwSurf, mwInt1, mwInt2, mwProd) {
+            let status = document.getElementById('status-box');
+            let isSafe = true;
+            let msg = "✅ DESIGN SAFE <br><span class='text-xs font-normal mt-1 block'>Mud weights are perfectly balanced between Pore Pressure and Fracture Pressure.</span>";
+            let color = "bg-emerald-900/60 border-emerald-500 text-emerald-200";
+
+            // Check if MW exceeds Fp at the previous shoe (Weak point)
+            if (mwInt1 > getFp(surfD)) { isSafe = false; msg = "🚨 FRACTURE RISK! <br><span class='text-xs font-normal mt-1 block'>Mud Weight for Int I exceeds Fracture Pressure at Surface Shoe. Decrease Int I depth.</span>"; }
+            else if (mwInt2 > getFp(int1D)) { isSafe = false; msg = "🚨 FRACTURE RISK! <br><span class='text-xs font-normal mt-1 block'>Mud Weight for Int II exceeds Fracture Pressure at Int I Shoe. Decrease Int II depth.</span>"; }
+            else if (mwProd > getFp(int2D)) { isSafe = false; msg = "🚨 FRACTURE RISK! <br><span class='text-xs font-normal mt-1 block'>Production Mud Weight exceeds Fracture Pressure at Int II Shoe.</span>"; }
+
+            if (!isSafe) color = "bg-red-900/80 border-red-500 text-red-200 animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.5)]";
+
+            status.className = `p-4 rounded-xl text-sm font-semibold transition-all flex items-center justify-center text-center border ${color}`;
+            status.innerHTML = msg;
+        }
+
+        function updateUI() {
+            document.getElementById('val-surf').innerText = slSurf.value + " ft";
+            document.getElementById('val-int1').innerText = slInt1.value + " ft";
+            document.getElementById('val-int2').innerText = slInt2.value + " ft";
+            drawGraph();
+        }
+
+        slSurf.addEventListener('input', updateUI);
+        slInt1.addEventListener('input', updateUI);
+        slInt2.addEventListener('input', updateUI);
+
+        // Init
+        updateUI();
+
+    </script>
+</body>
+</html>

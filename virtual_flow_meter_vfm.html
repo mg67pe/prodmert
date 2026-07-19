@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Flow Meter (VFM) Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #020617; border-radius: 0.5rem; border: 1px solid #1e293b; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: 600;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1rem; cursor: pointer; }
+        .btn-hazard { transition: all 0.2s; background: linear-gradient(135deg, #b91c1c, #991b1b); }
+        .btn-hazard:active { transform: scale(0.95); }
+        .digital-font { font-family: 'Courier New', Courier, monospace; font-weight: bold; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Virtual Flow Metering (VFM) & Digital Twin</h1>
+            <p class="text-slate-400 text-sm">Algorithmic Flow Calculation via Pressure Sensors & Choke Cv when Physical MPFM Fails</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls & Telemetry -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2">Subsea Sensor Inputs</h2>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-red-400"><span title="Upstream Pressure">P_up (Wellhead)</span> <span id="val-pup" class="font-mono">4000 psia</span></div>
+                        <input type="range" id="slider-pup" min="2000" max="6000" step="100" value="4000" style="accent-color: #ef4444;">
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="slider-label text-blue-400"><span title="Downstream Pressure">P_down (Manifold)</span> <span id="val-pdn" class="font-mono">2000 psia</span></div>
+                        <input type="range" id="slider-pdn" min="1000" max="5000" step="100" value="2000" style="accent-color: #3b82f6;">
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="slider-label text-emerald-400"><span title="Choke Opening Percentage">Choke Valve Opening</span> <span id="val-choke" class="font-mono">50%</span></div>
+                        <input type="range" id="slider-choke" min="0" max="100" step="5" value="50" style="accent-color: #10b981;">
+                    </div>
+
+                    <div class="text-[10px] text-slate-400 bg-slate-900 p-3 rounded border border-slate-700 mb-4">
+                        <strong>Logic:</strong> The VFM algorithm uses the pressure drop across the choke and the valve's C<sub>v</sub> curve to calculate the gas flow rate mathematically.
+                    </div>
+
+                    <button onclick="toggleMPFMFailure()" id="btn-mpfm" class="btn-hazard w-full py-3 text-white rounded-lg font-bold shadow-lg border border-red-500 text-xs tracking-wider">
+                        ⚡ SIMULATE HARDWARE MPFM FAILURE
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 flex-1">
+                    <!-- Physical Meter -->
+                    <div id="box-physical" class="bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col justify-center items-center text-center transition-all">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-widest mb-2">Hardware MPFM Reading</div>
+                        <div id="readout-physical" class="text-3xl digital-font text-emerald-400">0.0</div>
+                        <div class="text-[10px] text-slate-500 mt-1">MMscfd</div>
+                        <div id="status-physical" class="mt-2 text-[9px] font-bold bg-emerald-900/50 text-emerald-300 px-2 py-1 rounded uppercase tracking-wider border border-emerald-500">Sensor Online</div>
+                    </div>
+
+                    <!-- Virtual Flow Meter (VFM) -->
+                    <div class="bg-slate-900 p-4 rounded-xl border-2 border-sky-600 shadow-[0_0_15px_rgba(2,132,199,0.3)] flex flex-col justify-center items-center text-center relative overflow-hidden">
+                        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-sky-400 to-transparent opacity-50"></div>
+                        <div class="text-[10px] text-sky-400 uppercase tracking-widest mb-2">VFM Algorithm Output</div>
+                        <div id="readout-vfm" class="text-3xl digital-font text-sky-400">0.0</div>
+                        <div class="text-[10px] text-slate-500 mt-1">MMscfd</div>
+                        <div class="mt-2 text-[9px] font-bold bg-sky-900/50 text-sky-300 px-2 py-1 rounded uppercase tracking-wider border border-sky-500">Digital Twin Active</div>
+                    </div>
+                </div>
+
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-xs text-slate-300 font-semibold leading-relaxed text-center h-[90px] flex items-center justify-center">
+                    Physical sensors are operating normally. VFM is running in the background as a backup.
+                </div>
+            </div>
+
+            <!-- Right Panel: Canvas (Subsea Architecture) -->
+            <div class="xl:col-span-8 flex justify-center bg-[#020617] rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[600px]">
+                <canvas id="vfmCanvas" width="900" height="580" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">Subsea Architecture</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded bg-red-500"></span> P_up Sensor</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded bg-blue-500"></span> P_down Sensor</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded bg-emerald-500"></span> Valve Position Sensor</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 rounded bg-slate-400"></span> Physical MPFM</div>
+                    <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-600 text-sky-300">
+                        <span class="w-4 h-1 border-t-2 border-dashed border-sky-400"></span> Digital Data Stream to VFM
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('vfmCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slPup = document.getElementById('slider-pup');
+        const slPdn = document.getElementById('slider-pdn');
+        const slChoke = document.getElementById('slider-choke');
+
+        // Physics & State
+        let Pup = 4000;
+        let Pdn = 2000;
+        let ChokeOpen = 50; // %
+        let Q_actual = 0;
+        
+        let mpfmFailed = false;
+        let animationTime = 0;
+        let gasParticles = [];
+        let sparks = [];
+
+        // Architecture coordinates
+        const PIPE_Y = 350;
+        const CHOKE_X = 300;
+        const MPFM_X = 600;
+
+        class GasParticle {
+            constructor() { this.reset(true); }
+            reset(randomize = false) {
+                this.x = randomize ? Math.random() * canvas.width : -10;
+                this.y = PIPE_Y + (Math.random() - 0.5) * 40;
+                this.active = true;
+                // Base speed, will be updated dynamically
+                this.speed = 0;
+            }
+            update() {
+                if (!this.active) return;
+                
+                // Acceleration through choke
+                let currentSpeed = this.speed;
+                if (this.x > CHOKE_X - 50 && this.x < CHOKE_X + 50) {
+                    currentSpeed *= 3; // Fast through restriction
+                }
+
+                this.x += currentSpeed;
+                this.y += (Math.random() - 0.5) * 2; // Turbulence
+
+                if (this.x > canvas.width + 20) this.reset();
+            }
+            draw() {
+                if (!this.active || this.speed <= 0.1) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+                
+                // Color based on location (J-T cooling simulation)
+                ctx.fillStyle = this.x < CHOKE_X ? '#ef4444' : '#38bdf8'; 
+                
+                ctx.shadowBlur = 4; ctx.shadowColor = ctx.fillStyle;
+                ctx.fill(); ctx.shadowBlur = 0;
+            }
+        }
+
+        class Spark {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 6;
+                this.vy = -(Math.random() * 5 + 2);
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.vy += 0.3; // Gravity
+                this.life -= 0.05;
+            }
+            draw() {
+                if (this.life <= 0) return;
+                ctx.fillStyle = `rgba(255, ${Math.random()*255}, 0, ${this.life})`;
+                ctx.fillRect(this.x, this.y, 2, 2);
+            }
+        }
+
+        // Initialize particles
+        for(let i=0; i<150; i++) gasParticles.push(new GasParticle());
+
+        function toggleMPFMFailure() {
+            mpfmFailed = !mpfmFailed;
+            let btn = document.getElementById('btn-mpfm');
+            let boxPhys = document.getElementById('box-physical');
+            let statPhys = document.getElementById('status-physical');
+            let readPhys = document.getElementById('readout-physical');
+            let insight = document.getElementById('insight-box');
+
+            if (mpfmFailed) {
+                btn.innerText = "🔄 RESTORE PHYSICAL SENSOR";
+                btn.className = "btn-hazard w-full py-3 text-white rounded-lg font-bold shadow-lg border border-emerald-500 bg-emerald-700 hover:bg-emerald-600 text-xs tracking-wider transition-all";
+                
+                boxPhys.className = "bg-red-900/20 p-4 rounded-xl border border-red-900 shadow-inner flex flex-col justify-center items-center text-center transition-all opacity-75";
+                statPhys.className = "mt-2 text-[9px] font-bold bg-red-900/50 text-red-400 px-2 py-1 rounded uppercase tracking-wider border border-red-500 animate-pulse";
+                statPhys.innerText = "SENSOR FAILED";
+                readPhys.className = "text-3xl digital-font text-red-500 animate-pulse";
+                readPhys.innerText = "ERR";
+
+                // Add initial sparks
+                for(let i=0; i<30; i++) sparks.push(new Spark(MPFM_X, PIPE_Y - 40));
+
+                insight.innerHTML = "<span class='text-red-400'>CRITICAL HARDWARE FAILURE.</span> The physical MPFM has stopped transmitting data. <strong>The Virtual Flow Meter (VFM) has seamlessly taken over</strong>, utilizing basic pressure telemetry to keep the well visible.";
+                insight.className = "bg-red-900/30 border border-red-500 p-4 rounded-xl text-xs text-red-200 font-semibold leading-relaxed text-center h-[90px] flex items-center justify-center";
+            } else {
+                btn.innerText = "⚡ SIMULATE HARDWARE MPFM FAILURE";
+                btn.className = "btn-hazard w-full py-3 text-white rounded-lg font-bold shadow-lg border border-red-500 text-xs tracking-wider transition-all";
+                
+                boxPhys.className = "bg-slate-900 p-4 rounded-xl border border-slate-700 shadow-inner flex flex-col justify-center items-center text-center transition-all";
+                statPhys.className = "mt-2 text-[9px] font-bold bg-emerald-900/50 text-emerald-300 px-2 py-1 rounded uppercase tracking-wider border border-emerald-500";
+                statPhys.innerText = "Sensor Online";
+                readPhys.className = "text-3xl digital-font text-emerald-400";
+                
+                insight.innerHTML = "Physical sensors are operating normally. VFM is running in the background as a backup and validation tool.";
+                insight.className = "bg-slate-800 border border-slate-600 p-4 rounded-xl text-xs text-slate-300 font-semibold leading-relaxed text-center h-[90px] flex items-center justify-center";
+            }
+        }
+
+        function updatePhysics() {
+            Pup = parseInt(slPup.value);
+            Pdn = parseInt(slPdn.value);
+            ChokeOpen = parseInt(slChoke.value);
+
+            // Prevent unphysical reverse flow logically in UI
+            if (Pdn >= Pup) {
+                Pdn = Pup - 100;
+                slPdn.value = Pdn;
+            }
+
+            document.getElementById('val-pup').innerText = Pup + " psia";
+            document.getElementById('val-pdn').innerText = Pdn + " psia";
+            document.getElementById('val-choke').innerText = ChokeOpen + "%";
+
+            // Simplified Gas Flow Equation across a restriction
+            let ratio = Pdn / Pup;
+            let isSonic = ratio <= 0.55;
+            
+            // Cv curve approximation (non-linear)
+            let Cv_factor = Math.pow(ChokeOpen / 100, 1.5); 
+            
+            let Q = 0;
+            if (ChokeOpen > 0) {
+                if (isSonic) {
+                    Q = Pup * Cv_factor * 0.08; // Sonic depends mostly on upstream
+                } else {
+                    Q = Math.sqrt(Math.pow(Pup, 2) - Math.pow(Pdn, 2)) * Cv_factor * 0.05; // Subsonic
+                }
+            }
+
+            Q_actual = Q;
+
+            // Update Dashboards
+            let qStr = Q_actual.toFixed(1);
+            if (!mpfmFailed) document.getElementById('readout-physical').innerText = qStr;
+            
+            // Add a tiny bit of math noise to VFM to look algorithmic, but exactly matches average
+            let vfmNoise = (Math.random() - 0.5) * 0.2;
+            let vfmRead = Q_actual > 0 ? Math.max(0, Q_actual + vfmNoise) : 0;
+            document.getElementById('readout-vfm').innerText = vfmRead.toFixed(1);
+
+            // Update particle speed
+            gasParticles.forEach(p => p.speed = Math.max(0.1, Q_actual / 30));
+        }
+
+        function drawArchitecture() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Pipes
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 40; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(50, PIPE_Y); ctx.lineTo(canvas.width - 50, PIPE_Y); ctx.stroke();
+            
+            // Inner void
+            ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 28;
+            ctx.beginPath(); ctx.moveTo(50, PIPE_Y); ctx.lineTo(canvas.width - 50, PIPE_Y); ctx.stroke();
+
+            // 1. Choke Valve
+            ctx.fillStyle = '#64748b'; 
+            ctx.fillRect(CHOKE_X - 30, PIPE_Y - 40, 60, 80); // Body
+            
+            // Choke Stem (moves down as it closes)
+            let stemTravel = 26;
+            let stemY = (PIPE_Y - 14) + (stemTravel * (1 - ChokeOpen/100));
+            ctx.fillStyle = '#cbd5e1'; // Metal stem
+            ctx.fillRect(CHOKE_X - 6, PIPE_Y - 60, 12, stemY - (PIPE_Y - 60)); // Stem
+            
+            // Choke Restriction Block
+            ctx.fillStyle = '#1e293b'; 
+            ctx.fillRect(CHOKE_X - 10, stemY, 20, (PIPE_Y + 14) - stemY); // Block
+            
+            // Actuator
+            ctx.fillStyle = '#f59e0b'; ctx.fillRect(CHOKE_X - 25, PIPE_Y - 70, 50, 20);
+
+            // 2. Physical MPFM
+            if (mpfmFailed) {
+                ctx.fillStyle = '#7f1d1d'; // Dead red
+                ctx.shadowBlur = 10; ctx.shadowColor = '#ef4444';
+            } else {
+                ctx.fillStyle = '#334155'; // Normal steel
+                ctx.shadowBlur = 0;
+            }
+            ctx.fillRect(MPFM_X - 40, PIPE_Y - 30, 80, 60);
+            ctx.fillStyle = '#cbd5e1'; ctx.font="12px Arial font-bold"; ctx.textAlign="center";
+            ctx.fillText("MPFM", MPFM_X, PIPE_Y + 5);
+            ctx.shadowBlur = 0; ctx.textAlign="left"; // reset
+
+            // Random sparks if failed
+            if (mpfmFailed && Math.random() > 0.8) {
+                for(let i=0; i<3; i++) sparks.push(new Spark(MPFM_X + (Math.random()-0.5)*40, PIPE_Y - 30));
+            }
+
+            // 3. Sensors
+            // Pup Sensor
+            ctx.fillStyle = '#ef4444'; ctx.fillRect(CHOKE_X - 120, PIPE_Y - 25, 10, 10);
+            ctx.beginPath(); ctx.moveTo(CHOKE_X - 115, PIPE_Y - 15); ctx.lineTo(CHOKE_X - 115, PIPE_Y); ctx.lineWidth=2; ctx.strokeStyle='#ef4444'; ctx.stroke();
+            
+            // Pdn Sensor
+            ctx.fillStyle = '#3b82f6'; ctx.fillRect(CHOKE_X + 120, PIPE_Y - 25, 10, 10);
+            ctx.beginPath(); ctx.moveTo(CHOKE_X + 125, PIPE_Y - 15); ctx.lineTo(CHOKE_X + 125, PIPE_Y); ctx.lineWidth=2; ctx.strokeStyle='#3b82f6'; ctx.stroke();
+
+            // Choke Pos Sensor
+            ctx.fillStyle = '#10b981'; ctx.fillRect(CHOKE_X - 5, PIPE_Y - 80, 10, 10);
+
+            // 4. Digital Twin / VFM Server (Top Center)
+            const VFM_X = 450;
+            const VFM_Y = 100;
+            
+            ctx.fillStyle = '#0ea5e9';
+            ctx.beginPath(); ctx.roundRect(VFM_X - 60, VFM_Y - 30, 120, 60, 10); ctx.fill();
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath(); ctx.roundRect(VFM_X - 55, VFM_Y - 25, 110, 50, 8); ctx.fill();
+            
+            ctx.fillStyle = '#38bdf8'; ctx.font="14px Arial font-bold"; ctx.textAlign="center";
+            ctx.fillText("VFM ENGINE", VFM_X, VFM_Y + 5);
+            ctx.textAlign="left";
+
+            // 5. Data Streams (Dashed Lines)
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+            ctx.lineDashOffset = -animationTime * 15; // Moving dashes towards VFM
+
+            // From Pup
+            ctx.beginPath(); ctx.moveTo(CHOKE_X - 115, PIPE_Y - 25); ctx.lineTo(CHOKE_X - 115, VFM_Y); ctx.lineTo(VFM_X - 60, VFM_Y); ctx.stroke();
+            // From Pdn
+            ctx.beginPath(); ctx.moveTo(CHOKE_X + 125, PIPE_Y - 25); ctx.lineTo(CHOKE_X + 125, VFM_Y); ctx.lineTo(VFM_X + 60, VFM_Y); ctx.stroke();
+            // From Choke
+            ctx.beginPath(); ctx.moveTo(CHOKE_X, PIPE_Y - 80); ctx.lineTo(CHOKE_X, VFM_Y + 30); ctx.stroke();
+
+            ctx.setLineDash([]); // Reset
+            
+            // Labels
+            ctx.fillStyle = '#94a3b8'; ctx.font="10px Arial";
+            ctx.fillText("P_up Data", CHOKE_X - 165, VFM_Y - 10);
+            ctx.fillText("P_down Data", CHOKE_X + 130, VFM_Y - 10);
+            ctx.fillText("Cv % Data", CHOKE_X + 10, VFM_Y + 50);
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            
+            updatePhysics();
+            drawArchitecture();
+
+            // Process Gas Particles
+            gasParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Process Sparks
+            for (let i = sparks.length - 1; i >= 0; i--) {
+                let s = sparks[i];
+                s.update(); s.draw();
+                if (s.life <= 0) sparks.splice(i, 1);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        slPup.addEventListener('input', updatePhysics);
+        slPdn.addEventListener('input', updatePhysics);
+        slChoke.addEventListener('input', updatePhysics);
+
+        // Start
+        animate();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sand Control & Sieve Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-amber-500 mb-2">Completions: Sand Control & Sieve Analysis</h1>
+            <p class="text-slate-400 text-sm">Formation PSD, Gravel Pack Sizing (Saucier's Criteria) & Screen Selection</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Formasyon Parametreleri -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-amber-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-900 pb-2">Formation PSD Control</h2>
+                    
+                    <div class="slider-label"><span>Median Grain Size (D<sub>50</sub>)</span> <span id="val-d50" class="font-mono text-white">150 µm</span></div>
+                    <input type="range" id="slider-d50" min="50" max="600" step="10" value="150" style="accent-color: #f59e0b;">
+                    
+                    <div class="slider-label mt-2"><span>Sorting (Uniformity)</span> <span id="val-sort" class="font-mono text-emerald-300">Poor (2.5)</span></div>
+                    <input type="range" id="slider-sort" min="1.0" max="6.0" step="0.1" value="2.5" style="accent-color: #10b981;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit mt-2">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-4 border-b border-sky-900 pb-2">Design Criteria</h2>
+                    <ul class="text-[11px] text-slate-400 space-y-2">
+                        <li>• <strong>Gravel Sizing:</strong> Saucier Criteria (D<sub>50, GP</sub> = 5.5 × D<sub>50, Form</sub>)</li>
+                        <li>• <strong>Screen Slot:</strong> Sized to retain 100% of minimum gravel size.</li>
+                        <li>• <strong>C<sub>u</sub> < 3:</strong> Standalone Screen (SAS) possible.</li>
+                        <li>• <strong>C<sub>u</sub> > 3:</strong> Open-Hole Gravel Pack (OHGP) required.</li>
+                    </ul>
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas & Sonuçlar -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Formation Uniformity (C<sub>u</sub>)</div>
+                        <div id="kpi-cu" class="text-2xl font-bold text-amber-400">0.0</div>
+                        <div id="kpi-cu-label" class="text-[10px] font-bold text-slate-500">Poorly Sorted</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-orange-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Gravel Pack Target (D<sub>50</sub>)</div>
+                        <div id="kpi-gp" class="text-2xl font-bold text-orange-400">0 µm</div>
+                        <div class="text-[10px] text-slate-500">Based on Saucier</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Commercial Gravel Size</div>
+                        <div id="kpi-mesh" class="text-2xl font-bold text-sky-400">20/40</div>
+                        <div class="text-[10px] text-slate-500">U.S. Mesh Standard</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Recommended Screen</div>
+                        <div id="kpi-screen" class="text-2xl font-bold text-emerald-400">12 Gauge</div>
+                        <div class="text-[10px] text-slate-500">Wire-wrap slot size</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[450px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Particle Size Distribution (PSD) - Semi-Log</h3>
+                    <canvas id="sieveCanvas" width="900" height="400" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10 text-right">
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-6 h-[3px] bg-amber-500"></span> Formation Sand</div>
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-6 h-[3px] bg-sky-400"></span> Designed Gravel Pack</div>
+                        <div class="flex items-center justify-end gap-2"><span class="w-6 h-[2px] border-t-2 border-dashed border-slate-400"></span> D<sub>10</sub>, D<sub>50</sub>, D<sub>90</sub> Intersects</div>
+                    </div>
+                </div>
+
+                <!-- Tavsiye Kutusu -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Analyzing PSD Data...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('sieveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slD50 = document.getElementById('slider-d50');
+        const slSort = document.getElementById('slider-sort');
+
+        function calculateSieve() {
+            let formD50 = parseFloat(slD50.value);
+            let sortFactor = parseFloat(slSort.value); 
+
+            let sortText = sortFactor > 4 ? "Well Sorted" : (sortFactor > 2 ? "Moderate" : "Poorly Sorted");
+            document.getElementById('val-d50').innerText = formD50 + " µm";
+            document.getElementById('val-sort').innerText = sortText + " (" + sortFactor.toFixed(1) + ")";
+
+            let formData = [];
+            for (let x = 10; x <= 4000; x += 5) {
+                let logX = Math.log10(x);
+                let logD50 = Math.log10(formD50);
+                let p = 100 / (1 + Math.exp(-sortFactor * 2.5 * (logX - logD50)));
+                formData.push({x: x, y: p});
+            }
+
+            let formD10 = Math.pow(10, Math.log10(formD50) - Math.log(9)/(sortFactor * 2.5));
+            let formD90 = Math.pow(10, Math.log10(formD50) + Math.log(9)/(sortFactor * 2.5));
+
+            let Cu = formD90 / formD10;
+
+            let gpD50 = formD50 * 5.5; 
+            let gpSort = 6.0; 
+            let gpData = [];
+            for (let x = 10; x <= 4000; x += 5) {
+                let logX = Math.log10(x);
+                let logD50 = Math.log10(gpD50);
+                let p = 100 / (1 + Math.exp(-gpSort * 2.5 * (logX - logD50)));
+                gpData.push({x: x, y: p});
+            }
+
+            let gpD10 = Math.pow(10, Math.log10(gpD50) - Math.log(9)/(gpSort * 2.5));
+
+            let mesh = "12/20";
+            if (gpD50 < 400) mesh = "40/60";
+            else if (gpD50 < 800) mesh = "20/40";
+            else if (gpD50 < 1500) mesh = "16/30";
+
+            let slotMicrons = gpD10 * 0.9; 
+            let screenGauge = Math.floor(slotMicrons / 25.4);
+            if (screenGauge < 6) screenGauge = 6; 
+
+            document.getElementById('kpi-cu').innerText = Cu.toFixed(1);
+            document.getElementById('kpi-cu-label').innerText = Cu < 3 ? "Uniform" : "Non-Uniform";
+            document.getElementById('kpi-cu').className = "text-2xl font-bold " + (Cu < 3 ? "text-emerald-400" : "text-amber-400");
+            
+            document.getElementById('kpi-gp').innerText = Math.round(gpD50) + " µm";
+            document.getElementById('kpi-mesh').innerText = mesh;
+            document.getElementById('kpi-screen').innerText = screenGauge + " Gauge";
+
+            let insightBox = document.getElementById('insight-box');
+            if (Cu > 3) {
+                insightBox.className = "bg-orange-900/40 border border-orange-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `⚠️ GRAVEL PACK REQUIRED <br>
+                    <span class='text-xs font-normal'>Formation is poorly sorted (C<sub>u</sub> > 3) with wide grain size variation. Standalone Screen (SAS) will plug. <b>Open-Hole Gravel Pack (OHGP)</b> with ${mesh} gravel and ${screenGauge}-Gauge screen is highly recommended.</span>`;
+            } else if (formD50 < 100) {
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `🚨 HIGH FINES MIGRATION RISK <br>
+                    <span class='text-xs font-normal'>Sand is extremely fine (D<sub>50</sub> < 100 µm). Conventional SAS will fail. Premium mesh screens or Frac-Pack stimulation required to control fines.</span>`;
+            } else {
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ STANDALONE SCREEN (SAS) FEASIBLE <br>
+                    <span class='text-xs font-normal'>Sand is clean, coarse, and well-sorted (C<sub>u</sub> < 3). You may bypass the gravel pack and install a Standalone Premium Screen to reduce CAPEX.</span>`;
+            }
+
+            drawChart(formData, gpData, formD50, gpD50);
+        }
+
+        function drawChart(formData, gpData, f_d50, g_d50) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 60; const padR = 40; const padT = 30; const padB = 40;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            const minLog = Math.log10(10);
+            const maxLog = Math.log10(4000);
+            const rangeLog = maxLog - minLog;
+
+            const getX = (val) => padL + ((Math.log10(val) - minLog) / rangeLog) * chartW;
+            const getY = (percent) => padT + chartH - (percent / 100) * chartH;
+
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (let y = 0; y <= 100; y += 20) {
+                let py = getY(y);
+                ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(W - padR, py); ctx.stroke();
+                ctx.fillText(y + "%", padL - 10, py);
+            }
+            ctx.save(); ctx.translate(20, H/2); ctx.rotate(-Math.PI/2); ctx.textAlign = 'center';
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Cumulative Weight % Passing", 0, 0); ctx.restore();
+
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            const logSteps = [10, 20, 50, 100, 200, 500, 1000, 2000, 4000];
+            logSteps.forEach(xVal => {
+                let px = getX(xVal);
+                ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, H - padB); ctx.stroke();
+                ctx.fillText(xVal, px, H - padB + 5);
+            });
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Grain Size (Microns) - Log Scale", W/2, H - 15);
+
+            ctx.strokeStyle = '#64748b'; ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(padL, getY(50)); ctx.lineTo(W - padR, getY(50)); ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            formData.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(getX(pt.x), getY(pt.y));
+                else ctx.lineTo(getX(pt.x), getY(pt.y));
+            });
+            ctx.stroke();
+
+            let fx = getX(f_d50); let fy = getY(50);
+            ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            gpData.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(getX(pt.x), getY(pt.y));
+                else ctx.lineTo(getX(pt.x), getY(pt.y));
+            });
+            ctx.stroke();
+
+            let gx = getX(g_d50); let gy = getY(50);
+            ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(gx, gy, 5, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(fx + 10, fy); ctx.lineTo(gx - 10, gy); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            ctx.fillText("x 5.5", (fx + gx)/2, fy - 5);
+        }
+
+        slD50.addEventListener('input', calculateSieve);
+        slSort.addEventListener('input', calculateSieve);
+
+        setTimeout(calculateSieve, 100);
+
+    </script>
+</body>
+</html>

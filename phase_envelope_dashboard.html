@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phase Envelope & Separator Operating Point</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #0ea5e9; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-blue-400 mb-2">Surface Facilities: Phase Envelope (P-T Diagram)</h1>
+            <p class="text-slate-400 text-sm">Multicomponent Hydrocarbon Phase Behavior & Separator Optimization</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Sol Panel: Kontroller -->
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-blue-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-widest mb-4 border-b border-blue-900 pb-2">Gas Composition</h2>
+                    
+                    <div class="slider-label"><span>Heavy Fraction (C<sub>7+</sub>)</span> <span id="val-c7" class="font-mono text-white">5 %</span></div>
+                    <input type="range" id="slider-c7" min="0" max="20" step="0.5" value="5" style="accent-color: #3b82f6;">
+                    
+                    <div class="slider-label mt-2"><span>Methane (C<sub>1</sub>)</span> <span id="val-c1" class="font-mono text-emerald-300">85 %</span></div>
+                    <input type="range" id="slider-c1" min="60" max="95" step="1" value="85" style="accent-color: #10b981;">
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl h-fit mt-2">
+                    <h2 class="text-sm font-bold text-amber-400 uppercase tracking-widest mb-4 border-b border-amber-900 pb-2">Separator Operation</h2>
+                    
+                    <div class="slider-label"><span>Pressure (P<sub>sep</sub>)</span> <span id="val-p" class="font-mono text-amber-300">800 psia</span></div>
+                    <input type="range" id="slider-p" min="100" max="2500" step="50" value="800" style="accent-color: #f59e0b;">
+                    
+                    <div class="slider-label mt-2"><span>Temperature (T<sub>sep</sub>)</span> <span id="val-t" class="font-mono text-orange-400">80 °F</span></div>
+                    <input type="range" id="slider-t" min="-50" max="250" step="5" value="80" style="accent-color: #f97316;">
+                </div>
+
+            </div>
+
+            <!-- Sağ Panel: Canvas & Sonuçlar -->
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-red-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Cricondentherm (Max T)</div>
+                        <div id="kpi-tmax" class="text-2xl font-bold text-red-400">0 °F</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Cricondenbar (Max P)</div>
+                        <div id="kpi-pmax" class="text-2xl font-bold text-sky-400">0 psia</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-purple-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Critical Temp (T<sub>c</sub>)</div>
+                        <div id="kpi-tc" class="text-2xl font-bold text-purple-400">0 °F</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-emerald-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Fluid State in Separator</div>
+                        <div id="kpi-state" class="text-xl font-bold text-emerald-400 mt-1">Single Phase</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[450px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">P-T Phase Diagram</h3>
+                    <canvas id="ptCanvas" width="900" height="400" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10 text-right">
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-6 h-[3px] bg-sky-400"></span> Bubble Point Curve</div>
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-6 h-[3px] bg-red-500"></span> Dew Point Curve</div>
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-3 h-3 rounded-full bg-purple-500"></span> Critical Point</div>
+                        <div class="flex items-center justify-end gap-2"><span class="w-5 h-5 flex items-center justify-center"><div class="w-3 h-3 bg-amber-400 rotate-45 border border-white"></div></span> Separator Operating Point</div>
+                    </div>
+                </div>
+
+                <!-- Tavsiye Kutusu -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Calculating Phase Behavior...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('ptCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slC7 = document.getElementById('slider-c7');
+        const slC1 = document.getElementById('slider-c1');
+        const slP = document.getElementById('slider-p');
+        const slT = document.getElementById('slider-t');
+
+        // Normalized Teardrop Shape for Phase Envelope (x: 0 to 1, y: 0 to 1)
+        const normEnv = [
+            {x: 0.15, y: 0.05}, {x: 0.08, y: 0.15}, {x: 0.02, y: 0.3}, {x: 0.0, y: 0.45}, // Left side (Bubble)
+            {x: 0.04, y: 0.65}, {x: 0.1, y: 0.8}, {x: 0.25, y: 0.95},
+            {x: 0.45, y: 1.0}, // Top (Cricondenbar)
+            {x: 0.65, y: 0.9}, {x: 0.85, y: 0.65}, {x: 0.97, y: 0.35},
+            {x: 1.0, y: 0.15}, // Right side (Cricondentherm)
+            {x: 0.92, y: 0.05}, {x: 0.8, y: 0.02}, {x: 0.6, y: 0.0} // Bottom closure
+        ];
+
+        // Ray-casting algorithm to check if point is inside polygon
+        function isPointInPolygon(point, vs) {
+            let x = point[0], y = point[1];
+            let inside = false;
+            for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+                let xi = vs[i].t, yi = vs[i].p;
+                let xj = vs[j].t, yj = vs[j].p;
+                let intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function updateSimulation() {
+            let C7 = parseFloat(slC7.value);
+            let C1 = parseFloat(slC1.value);
+            let P_sep = parseFloat(slP.value);
+            let T_sep = parseFloat(slT.value);
+
+            document.getElementById('val-c7').innerText = C7.toFixed(1) + " %";
+            document.getElementById('val-c1').innerText = C1.toFixed(1) + " %";
+            document.getElementById('val-p').innerText = P_sep + " psia";
+            document.getElementById('val-t').innerText = T_sep + " °F";
+
+            // Physics Approximation Logic
+            let T_min = -150; // Base cold temperature
+            let T_max = -40 + (C7 * 15) - ((C1 - 85) * 2); // Cricondentherm expands with heavies
+            let P_max = 1200 + (C7 * 80) + ((C1 - 85) * 10); // Cricondenbar
+
+            // Map normalized envelope to real P/T
+            let envData = normEnv.map(pt => {
+                return {
+                    t: T_min + pt.x * (T_max - T_min),
+                    p: 50 + pt.y * (P_max - 50)
+                };
+            });
+
+            // Calculate Critical Point (CP is usually on the left side of the dome for gas condensates)
+            let cp_idx = 4; // Index near the left-upper side of the teardrop
+            let Tc = envData[cp_idx].t;
+            let Pc = envData[cp_idx].p;
+
+            // Check Operating State
+            let opPoint = [T_sep, P_sep];
+            let isTwoPhase = isPointInPolygon(opPoint, envData);
+            
+            let stateText = "";
+            let insightClass = "";
+            let insightHtml = "";
+
+            if (isTwoPhase) {
+                stateText = "Two-Phase (L+G)";
+                insightClass = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightHtml = `✅ OPTIMUM SEPARATION (TWO-PHASE REGION) <br>
+                    <span class='text-xs font-normal'>Separator is operating inside the phase envelope. Liquid dropout (condensate) is actively forming and being recovered to the liquid line.</span>`;
+            } else if (P_sep > P_max) {
+                stateText = "Dense Phase";
+                insightClass = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all animate-pulse";
+                insightHtml = `🚨 SUPERCRITICAL / DENSE PHASE <br>
+                    <span class='text-xs font-normal'>Pressure is above the Cricondenbar. Gas and liquid are indistinguishable. Separation is impossible. Drop pressure to enter the envelope!</span>`;
+            } else if (T_sep > Tc) {
+                stateText = "Single Phase Gas";
+                insightClass = "bg-orange-900/40 border border-orange-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightHtml = `⚠️ DRY GAS REGION <br>
+                    <span class='text-xs font-normal'>Separator is too hot (outside Dew Point curve) or gas is too lean. No condensate is forming; valuable heavy fractions are escaping into the gas sales line.</span>`;
+            } else {
+                stateText = "Single Phase Liquid";
+                insightClass = "bg-blue-900/40 border border-blue-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightHtml = `🧊 LIQUID REGION (SUBCOOLED) <br>
+                    <span class='text-xs font-normal'>Separator is too cold and pressurized (outside Bubble Point curve). Flow is entirely liquid. Check for Hydrate formation risks!</span>`;
+            }
+
+            // Update KPIs
+            document.getElementById('kpi-tmax').innerText = Math.round(T_max) + " °F";
+            document.getElementById('kpi-pmax').innerText = Math.round(P_max) + " psia";
+            document.getElementById('kpi-tc').innerText = Math.round(Tc) + " °F";
+            
+            let stateEl = document.getElementById('kpi-state');
+            stateEl.innerText = stateText;
+            stateEl.className = "text-xl font-bold mt-1 " + (isTwoPhase ? "text-emerald-400" : (stateText === "Dense Phase" ? "text-red-400" : "text-orange-400"));
+
+            document.getElementById('insight-box').className = insightClass;
+            document.getElementById('insight-box').innerHTML = insightHtml;
+
+            drawChart(envData, cp_idx, T_sep, P_sep, isTwoPhase);
+        }
+
+        function drawChart(envData, cp_idx, op_t, op_p, isTwoPhase) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const W = canvas.width; const H = canvas.height;
+            const padL = 60; const padR = 40; const padT = 30; const padB = 40;
+            const chartW = W - padL - padR;
+            const chartH = H - padT - padB;
+
+            // Chart Limits
+            const T_MIN = -150; const T_MAX = 350;
+            const P_MIN = 0; const P_MAX = 3000;
+
+            const getX = (t) => padL + ((t - T_MIN) / (T_MAX - T_MIN)) * chartW;
+            const getY = (p) => padT + chartH - ((p - P_MIN) / (P_MAX - P_MIN)) * chartH;
+
+            // Draw Grid
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            
+            // X-Axis (Temp)
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            for (let t = T_MIN; t <= T_MAX; t += 50) {
+                let px = getX(t);
+                ctx.beginPath(); ctx.moveTo(px, padT); ctx.lineTo(px, H - padB); ctx.stroke();
+                ctx.fillText(t, px, H - padB + 5);
+            }
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Temperature (°F)", W/2, H - 15);
+
+            // Y-Axis (Pressure)
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; 
+            for (let p = P_MIN; p <= P_MAX; p += 500) {
+                let py = getY(p);
+                ctx.beginPath(); ctx.moveTo(padL, py); ctx.lineTo(W - padR, py); ctx.stroke();
+                ctx.fillText(p, padL - 10, py);
+            }
+            ctx.save(); ctx.translate(20, H/2); ctx.rotate(-Math.PI/2); ctx.textAlign = 'center';
+            ctx.fillStyle = '#cbd5e1'; ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("Pressure (psia)", 0, 0); ctx.restore();
+
+            // Draw Envelope Area Fill
+            ctx.beginPath();
+            envData.forEach((pt, i) => {
+                if (i === 0) ctx.moveTo(getX(pt.t), getY(pt.p));
+                else ctx.lineTo(getX(pt.t), getY(pt.p));
+            });
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.1)'; // Slight green tint for two-phase region
+            ctx.fill();
+
+            // Draw Bubble Point Curve (Blue)
+            ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i = 0; i <= cp_idx; i++) {
+                if (i === 0) ctx.moveTo(getX(envData[i].t), getY(envData[i].p));
+                else ctx.lineTo(getX(envData[i].t), getY(envData[i].p));
+            }
+            ctx.stroke();
+
+            // Draw Dew Point Curve (Red)
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i = cp_idx; i < envData.length; i++) {
+                if (i === cp_idx) ctx.moveTo(getX(envData[i].t), getY(envData[i].p));
+                else ctx.lineTo(getX(envData[i].t), getY(envData[i].p));
+            }
+            ctx.stroke(); // connect to end
+            ctx.lineTo(getX(envData[0].t), getY(envData[0].p)); // close gap at bottom
+            ctx.stroke();
+
+            // Draw Critical Point
+            let cpX = getX(envData[cp_idx].t); let cpY = getY(envData[cp_idx].p);
+            ctx.fillStyle = '#a855f7'; ctx.beginPath(); ctx.arc(cpX, cpY, 6, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+            ctx.fillStyle = '#fff'; ctx.fillText("Critical Point", cpX - 10, cpY - 5);
+
+            // Draw Separator Operating Point
+            let opX = getX(op_t); let opY = getY(op_p);
+            
+            // Draw targeting lines
+            ctx.strokeStyle = isTwoPhase ? '#10b981' : '#f59e0b'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(opX, opY); ctx.lineTo(opX, H - padB); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(opX, opY); ctx.lineTo(padL, opY); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw diamond
+            ctx.save();
+            ctx.translate(opX, opY);
+            ctx.rotate(Math.PI / 4); // 45 degrees
+            ctx.fillStyle = isTwoPhase ? '#10b981' : '#f59e0b';
+            ctx.fillRect(-6, -6, 12, 12);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+            ctx.strokeRect(-6, -6, 12, 12);
+            ctx.restore();
+
+            ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText("Op. Point", opX + 10, opY - 5);
+        }
+
+        // Add Listeners
+        slC7.addEventListener('input', updateSimulation);
+        slC1.addEventListener('input', updateSimulation);
+        slP.addEventListener('input', updateSimulation);
+        slT.addEventListener('input', updateSimulation);
+
+        // Run
+        setTimeout(updateSimulation, 100);
+
+    </script>
+</body>
+</html>

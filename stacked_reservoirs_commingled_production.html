@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stacked Reservoirs & Commingled Production</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem; color: #cbd5e1; font-weight: bold;}
+        input[type=range] { accent-color: #38bdf8; width: 100%; margin-bottom: 1.2rem; cursor: pointer; }
+        .icv-slider { accent-color: #10b981 !important; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Commingled Production & Smart Completions</h1>
+            <p class="text-slate-400 text-sm">Managing Stacked Reservoirs, Crossflow (Thief Zones), and ICV Optimization</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <div class="xl:col-span-3 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-blue-900 shadow-xl h-fit">
+                    <h2 class="text-sm font-bold text-blue-400 uppercase tracking-widest mb-4 border-b border-blue-900 pb-2">Wellbore Control</h2>
+                    
+                    <div class="slider-label"><span>Bottomhole Flowing Press. (P<sub>wf</sub>)</span> <span id="val-pwf" class="font-mono text-white">3000 psi</span></div>
+                    <input type="range" id="slider-pwf" min="1000" max="4500" step="100" value="3000" style="accent-color: #3b82f6;">
+                    <div class="text-[10px] text-slate-400 mt-[-10px] mb-2 leading-tight">
+                        Determined by the surface choke. Lower Pwf draws more gas from the formation.
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-5 rounded-xl border border-emerald-900 shadow-[0_0_15px_rgba(16,185,129,0.1)] h-fit mt-2">
+                    <h2 class="text-sm font-bold text-emerald-400 uppercase tracking-widest mb-4 border-b border-emerald-900 pb-2">Smart Completion (ICV) Panel</h2>
+                    
+                    <div class="text-xs text-slate-400 mb-4 bg-slate-900 p-3 rounded border border-slate-700">
+                        Inflow Control Valves (ICVs) isolate specific zones. 100% is fully open, 0% is isolated (choked).
+                    </div>
+
+                    <div class="slider-label text-sky-400"><span>Zone 3 ICV (Depleted / Low P)</span> <span id="val-icv3" class="font-mono">100%</span></div>
+                    <input type="range" id="slider-icv3" class="icv-slider" min="0" max="100" step="10" value="100">
+
+                    <div class="slider-label text-amber-400"><span>Zone 2 ICV (Medium P)</span> <span id="val-icv2" class="font-mono">100%</span></div>
+                    <input type="range" id="slider-icv2" class="icv-slider" min="0" max="100" step="10" value="100">
+
+                    <div class="slider-label text-red-400"><span>Zone 1 ICV (High P)</span> <span id="val-icv1" class="font-mono">100%</span></div>
+                    <input type="range" id="slider-icv1" class="icv-slider" min="0" max="100" step="10" value="100">
+                </div>
+
+            </div>
+
+            <div class="xl:col-span-9 flex flex-col gap-4">
+                
+                <!-- KPI Kartları -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-slate-800 border-t-4 border-sky-500 p-4 rounded-lg shadow-lg text-center flex flex-col justify-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Total Surface Production</div>
+                        <div id="kpi-total" class="text-3xl font-bold text-sky-400">0.0</div>
+                        <div class="text-[10px] text-slate-500">MMscfd</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-slate-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Zone 3 Contrib. (2000 psi)</div>
+                        <div id="kpi-z3" class="text-xl font-bold text-slate-300">0.0</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-amber-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Zone 2 Contrib. (3500 psi)</div>
+                        <div id="kpi-z2" class="text-xl font-bold text-amber-400">0.0</div>
+                    </div>
+                    <div class="bg-slate-800 border-t-4 border-red-500 p-4 rounded-lg shadow-lg text-center">
+                        <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">Zone 1 Contrib. (4500 psi)</div>
+                        <div id="kpi-z1" class="text-xl font-bold text-red-500">0.0</div>
+                    </div>
+                </div>
+
+                <!-- Canvas Alanı -->
+                <div class="bg-slate-900 rounded-xl border border-slate-700 p-4 relative overflow-hidden flex-1 min-h-[500px]">
+                    <h3 class="text-sm font-bold text-slate-300 uppercase tracking-widest mb-2 border-b border-slate-600 pb-2">Wellbore & Reservoir Section</h3>
+                    <canvas id="wellCanvas" width="900" height="450" class="w-full h-full object-contain"></canvas>
+                    
+                    <div class="absolute top-14 right-6 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-xs backdrop-blur shadow-xl pointer-events-none z-10 text-right">
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-4 h-4 bg-[#0f172a] border border-slate-500"></span> Production Tubing</div>
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-4 h-2 bg-[#111827] border border-white"></span> Isolation Packers</div>
+                        <div class="flex items-center justify-end gap-2 mb-2"><span class="w-2 h-4 bg-[#10b981]"></span> Inflow Control Valves (ICV)</div>
+                        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-600">
+                            Particles flowing right \u2192 left = Crossflow (Thief Zone)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Insight Kutusu -->
+                <div id="insight-box" class="bg-slate-800 border border-slate-600 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all">
+                    Analyzing flow dynamics...
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('wellCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const slPwf = document.getElementById('slider-pwf');
+        const slIcv1 = document.getElementById('slider-icv1');
+        const slIcv2 = document.getElementById('slider-icv2');
+        const slIcv3 = document.getElementById('slider-icv3');
+
+        // Layout Constants
+        const CX = 150; // Wellbore center X
+        const TUBING_W = 40;
+        const CASING_W = 80;
+
+        // Zone Definitions
+        const zones = [
+            { id: 3, name: "Zone 3", yTop: 50, yBot: 150, pres: 2000, PI: 10, color: '#38bdf8', particleColor: '#0ea5e9' }, // Low Pressure
+            { id: 2, name: "Zone 2", yTop: 180, yBot: 280, pres: 3500, PI: 15, color: '#f59e0b', particleColor: '#d97706' }, // Med Pressure
+            { id: 1, name: "Zone 1", yTop: 310, yBot: 410, pres: 4500, PI: 25, color: '#ef4444', particleColor: '#b91c1c' }  // High Pressure
+        ];
+
+        let Pwf = 3000;
+        let icvState = { 1: 1.0, 2: 1.0, 3: 1.0 };
+        let flowRates = { 1: 0, 2: 0, 3: 0, total: 0 };
+        let particles = [];
+        let animationTime = 0;
+
+        class GasParticle {
+            constructor(zoneIdx) {
+                this.zoneIdx = zoneIdx;
+                this.zone = zones[zoneIdx];
+                this.reset();
+            }
+            reset() {
+                this.active = true;
+                let q = flowRates[this.zone.id];
+                
+                if (q > 0) {
+                    // Flowing into wellbore
+                    this.x = canvas.width - Math.random() * 200; // Start in matrix
+                    this.y = this.zone.yTop + 10 + Math.random() * (this.zone.yBot - this.zone.yTop - 20);
+                    this.state = 'matrix'; // matrix -> icv -> tubing_up
+                } else if (q < 0) {
+                    // Crossflow! Flowing from wellbore into matrix
+                    this.x = CX + (Math.random() - 0.5) * 10; // Start in tubing
+                    // Spawn somewhere below or inside the zone
+                    this.y = this.zone.yTop + 40 + Math.random() * 100; 
+                    this.state = 'tubing_crossflow'; // tubing -> icv -> matrix
+                } else {
+                    this.active = false;
+                }
+
+                this.speed = Math.min(Math.abs(q) / 100, 10); // Cap visual speed
+            }
+            update() {
+                if (!this.active) return;
+
+                let q = flowRates[this.zone.id];
+
+                if (q > 0) {
+                    // Normal Production
+                    if (this.state === 'matrix') {
+                        this.x -= this.speed; // Move left to wellbore
+                        if (this.x <= CX + TUBING_W/2 + 5) {
+                            this.state = 'tubing_up';
+                            this.x = CX + (Math.random() - 0.5) * (TUBING_W - 10);
+                        }
+                    } else if (this.state === 'tubing_up') {
+                        this.y -= this.speed * 1.5; // Move up to surface
+                        this.x += Math.sin(this.y * 0.1) * 2; // Wiggle
+                        if (this.y < -10) this.reset();
+                    }
+                } else if (q < 0) {
+                    // Crossflow (Thief Zone)
+                    if (this.state === 'tubing_crossflow') {
+                        // Move up from deeper zones, but get sucked into this zone
+                        if (this.y > this.zone.yTop + (this.zone.yBot - this.zone.yTop)/2) {
+                            this.y -= this.speed * 1.5;
+                        } else {
+                            this.state = 'thief_matrix';
+                        }
+                    } else if (this.state === 'thief_matrix') {
+                        this.x += this.speed; // Move right into formation
+                        // Fade out effect
+                        this.y += (Math.random() - 0.5) * 2;
+                        if (this.x > canvas.width + 10) this.reset();
+                    }
+                }
+            }
+            draw() {
+                if (!this.active || this.speed < 0.1) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+                
+                // Color changes if it's crossflow to highlight the problem
+                if (flowRates[this.zone.id] < 0 && this.state === 'thief_matrix') {
+                    ctx.fillStyle = 'rgba(255, 0, 0, 0.6)'; // Danger red
+                } else {
+                    ctx.fillStyle = this.zone.particleColor;
+                }
+                
+                ctx.fill();
+            }
+        }
+
+        // Initialize particles pool
+        for(let i=0; i<300; i++) {
+            // Allocate particles to zones roughly evenly
+            particles.push(new GasParticle(i % 3));
+        }
+
+        function calculatePhysics() {
+            Pwf = parseFloat(slPwf.value);
+            icvState[1] = parseFloat(slIcv1.value) / 100.0;
+            icvState[2] = parseFloat(slIcv2.value) / 100.0;
+            icvState[3] = parseFloat(slIcv3.value) / 100.0;
+
+            document.getElementById('val-pwf').innerText = Pwf + " psi";
+            document.getElementById('val-icv1').innerText = (icvState[1] * 100).toFixed(0) + "%";
+            document.getElementById('val-icv2').innerText = (icvState[2] * 100).toFixed(0) + "%";
+            document.getElementById('val-icv3').innerText = (icvState[3] * 100).toFixed(0) + "%";
+
+            flowRates.total = 0;
+            let crossflowHappening = false;
+            let thiefZoneName = "";
+
+            zones.forEach(z => {
+                let PI_eff = z.PI * icvState[z.id];
+                // Q = PI * (Pr - Pwf)
+                let q = PI_eff * (z.pres - Pwf);
+                
+                flowRates[z.id] = q;
+
+                // Update individual KPI boxes
+                let el = document.getElementById('kpi-z' + z.id);
+                el.innerText = q.toFixed(1);
+
+                if (q < 0) {
+                    crossflowHappening = true;
+                    thiefZoneName = z.name;
+                    el.className = "text-xl font-bold text-red-500 animate-pulse";
+                    el.innerText = q.toFixed(1) + " (LOSS)";
+                } else if (q === 0) {
+                    el.className = "text-xl font-bold text-slate-500";
+                } else {
+                    el.className = "text-xl font-bold " + (z.id===1 ? 'text-red-400' : (z.id===2 ? 'text-amber-400' : 'text-sky-400'));
+                }
+
+                // Total production only counts gas going to surface
+                flowRates.total += q; 
+            });
+
+            // If total is negative, well is dead/injecting
+            if (flowRates.total < 0) flowRates.total = 0;
+
+            let elTotal = document.getElementById('kpi-total');
+            elTotal.innerText = flowRates.total.toFixed(1);
+
+            // Insight Box Logic
+            let insightBox = document.getElementById('insight-box');
+            if (crossflowHappening) {
+                elTotal.className = "text-3xl font-bold text-red-500";
+                insightBox.className = "bg-red-900/40 border border-red-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all animate-pulse";
+                insightBox.innerHTML = `🚨 CROSSFLOW DETECTED (${thiefZoneName})! <br>
+                    <span class='text-xs font-normal'>High pressure gas from lower zones is flowing INTO the depleted low-pressure zone instead of going to the surface! <b>Close the ICV</b> for the thief zone to save production.</span>`;
+            } else if (flowRates.total === 0) {
+                elTotal.className = "text-3xl font-bold text-slate-500";
+                insightBox.className = "bg-slate-800/80 border border-slate-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `WELL IS SHUT-IN OR DEAD <br>
+                    <span class='text-xs font-normal'>Bottomhole flowing pressure ($P_{wf}$) is higher than all reservoir pressures, or all ICVs are closed.</span>`;
+            } else {
+                elTotal.className = "text-3xl font-bold text-emerald-400";
+                insightBox.className = "bg-emerald-900/40 border border-emerald-500 p-4 rounded-xl text-sm font-semibold shadow-xl text-center w-full transition-all";
+                insightBox.innerHTML = `✅ OPTIMIZED COMMINGLED PRODUCTION <br>
+                    <span class='text-xs font-normal'>All open zones are contributing positively to the total surface rate. No crossflow detected.</span>`;
+            }
+
+            // Reset particles to adopt new flow rates
+            particles.forEach(p => { if (!p.active) p.reset(); });
+        }
+
+        function drawEnvironment() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Background Rock
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Formation Zones
+            zones.forEach(z => {
+                // Rock Matrix (Colored by pressure)
+                ctx.fillStyle = z.color;
+                ctx.globalAlpha = 0.15;
+                ctx.fillRect(CX + CASING_W/2, z.yTop, canvas.width, z.yBot - z.yTop);
+                ctx.globalAlpha = 1.0;
+
+                // Zone Labels
+                ctx.fillStyle = z.color;
+                ctx.font = "bold 14px Arial";
+                ctx.fillText(`${z.name} (Pr = ${z.pres} psi)`, CX + CASING_W/2 + 20, z.yTop + 25);
+
+                // Perforations
+                ctx.fillStyle = '#0f172a';
+                for(let py = z.yTop + 20; py < z.yBot - 10; py += 20) {
+                    ctx.fillRect(CX + CASING_W/2 - 5, py, 15, 6);
+                }
+            });
+
+            // Draw Wellbore
+            // Casing
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(CX - CASING_W/2, 0, CASING_W, canvas.height);
+            ctx.fillStyle = '#0f172a'; // Casing Void
+            ctx.fillRect(CX - CASING_W/2 + 5, 0, CASING_W - 10, canvas.height);
+
+            // Tubing
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(CX - TUBING_W/2, 0, TUBING_W, canvas.height - 30);
+            ctx.fillStyle = '#0f172a'; // Tubing Void
+            ctx.fillRect(CX - TUBING_W/2 + 5, 0, TUBING_W - 10, canvas.height - 30);
+
+            // Draw Isolation Packers (Between zones)
+            ctx.fillStyle = '#111827';
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+            let packerYs = [zones[0].yTop - 15, zones[1].yTop - 15, zones[2].yTop - 15];
+            packerYs.forEach(py => {
+                ctx.fillRect(CX - CASING_W/2 + 5, py, (CASING_W - TUBING_W)/2 - 5, 20); // Left
+                ctx.fillRect(CX + TUBING_W/2, py, (CASING_W - TUBING_W)/2 - 5, 20); // Right
+                ctx.strokeRect(CX - CASING_W/2 + 5, py, (CASING_W - TUBING_W)/2 - 5, 20);
+                ctx.strokeRect(CX + TUBING_W/2, py, (CASING_W - TUBING_W)/2 - 5, 20);
+            });
+
+            // Draw ICVs (Inflow Control Valves) on Tubing
+            zones.forEach(z => {
+                let icvY = z.yTop + (z.yBot - z.yTop) / 2;
+                let openRatio = icvState[z.id];
+                
+                // Draw Valve Port
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(CX + TUBING_W/2 - 5, icvY - 15, 10, 30); // Hole in tubing
+                
+                // Draw Sliding Sleeve / Choke
+                ctx.fillStyle = '#10b981';
+                let sleeveH = 30 * (1 - openRatio); // 0 = fully open (sleeve up), 30 = closed (sleeve down)
+                ctx.fillRect(CX + TUBING_W/2 - 6, icvY - 15, 12, sleeveH);
+                
+                // Label
+                ctx.fillStyle = '#fff';
+                ctx.font = "10px Arial";
+                ctx.fillText(`ICV: ${openRatio*100}%`, CX - TUBING_W/2 - 55, icvY + 5);
+            });
+        }
+
+        function animate() {
+            animationTime += 0.05;
+            calculatePhysics();
+            
+            drawEnvironment();
+
+            // Handle Particles
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Listeners
+        slPwf.addEventListener('input', calculatePhysics);
+        slIcv1.addEventListener('input', calculatePhysics);
+        slIcv2.addEventListener('input', calculatePhysics);
+        slIcv3.addEventListener('input', calculatePhysics);
+
+        // Run
+        animate();
+
+    </script>
+</body>
+</html>

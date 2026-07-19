@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subsea ESD & 170km Umbilical Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 40px rgba(0,0,0,0.9); }
+        .control-btn { transition: all 0.2s ease; border-left: 4px solid transparent; }
+        .control-btn.active { background-color: #1e293b; border-left-color: #38bdf8; color: #38bdf8; font-weight: bold; box-shadow: inset 0 0 15px rgba(0,0,0,0.3); }
+        .esd-btn { background: repeating-linear-gradient(45deg, #dc2626, #dc2626 10px, #b91c1c 10px, #b91c1c 20px); transition: transform 0.1s; }
+        .esd-btn:active:not(:disabled) { transform: scale(0.95); box-shadow: inset 0 0 20px rgba(0,0,0,0.8); }
+        .esd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-6 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Deepwater ESD & Umbilical Delay</h1>
+            <p class="text-slate-400 text-sm">Direct Hydraulic vs. Electro-Hydraulic MUX Control over 170-km Tie-Back</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Controls -->
+            <div class="lg:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 shadow-xl">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-600 pb-2">Control System Type</h2>
+                    
+                    <div class="flex flex-col gap-3 mb-4">
+                        <button onclick="setSystem('hydraulic')" id="btn-hydraulic" class="control-btn active text-left px-3 py-3 rounded text-sm text-slate-300">
+                            1. Direct Hydraulic (Legacy)
+                            <div class="text-[10px] text-slate-500 font-normal mt-1">Slow fluid transmission over 170km hose. Hose expansion (ballooning) causes massive delays.</div>
+                        </button>
+                        <button onclick="setSystem('mux')" id="btn-mux" class="control-btn text-left px-3 py-3 rounded text-sm text-slate-300">
+                            2. MUX + Subsea Accumulators (Modern)
+                            <div class="text-[10px] text-slate-500 font-normal mt-1">Electrical signal (light speed) triggers local pre-charged hydraulic bottles instantly.</div>
+                        </button>
+                    </div>
+
+                    <button id="btn-esd" onclick="triggerESD()" class="esd-btn w-full mt-2 py-4 rounded-lg text-white font-black text-lg tracking-widest shadow-[0_0_15px_rgba(220,38,38,0.5)] border-2 border-red-400">
+                        🚨 EMERGENCY SHUTDOWN
+                    </button>
+                    
+                    <button onclick="resetSystem()" class="w-full mt-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded font-bold transition border border-slate-600 text-xs">
+                        🔄 RESET WELL
+                    </button>
+                </div>
+
+                <!-- YENİ EKLENEN KISALTMALAR SÖZLÜĞÜ -->
+                <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-inner">
+                    <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-600 pb-1 mb-2">Terminoloji (Sözlük)</h2>
+                    <ul class="text-[10px] text-slate-300 space-y-2 leading-tight">
+                        <li><strong class="text-sky-400">Umbilical:</strong> Denizaltı kordonu. Yüzeyden kuyuya elektrik, hidrolik güç ve kimyasal (MEG) taşır.</li>
+                        <li><strong class="text-sky-400">MUX:</strong> Multiplex Electro-Hydraulic. Sinyali elektrikle (ışık hızında) iletip, vanayı lokal hidrolik tüplerle kapatan sistem.</li>
+                        <li><strong class="text-sky-400">SCM:</strong> Subsea Control Module. Kuyu ağacının üzerindeki "sarı beyin". Gelen elektrik sinyalini hidrolik harekete çevirir.</li>
+                        <li><strong class="text-red-400">ESD:</strong> Emergency Shut-Down. Acil kapatma sistemi.</li>
+                    </ul>
+                </div>
+
+                <div class="bg-slate-900 p-5 rounded-xl border border-slate-700 shadow-inner flex flex-col gap-3 flex-1">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest border-b border-slate-700 pb-2">Incident Telemetry</h2>
+                    
+                    <div class="grid grid-cols-2 gap-4 mt-2">
+                        <div class="bg-slate-800 p-3 rounded border border-slate-600 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Time Elapsed</div>
+                            <div id="val-time" class="text-2xl font-mono font-bold text-amber-400">00:00</div>
+                            <div class="text-[9px] text-slate-500 mt-1">Min:Sec</div>
+                        </div>
+                        <div class="bg-slate-800 p-3 rounded border border-red-900/50 text-center shadow-lg">
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Escaped Gas Volume</div>
+                            <div id="val-leak" class="text-2xl font-mono font-bold text-red-500">0</div>
+                            <div class="text-[9px] text-slate-500 mt-1">m³ (Thousands)</div>
+                        </div>
+                    </div>
+
+                    <div id="status-box" class="mt-4 bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-sm text-emerald-200 font-semibold text-center transition-all h-20 flex items-center justify-center">
+                        NORMAL PRODUCTION <br><span class="text-xs font-normal mt-1 block">Facility is operating safely. Master valves open.</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Right Panel: Canvas -->
+            <div class="lg:col-span-8 flex justify-center bg-slate-900 rounded-xl border border-slate-700 p-2 relative overflow-hidden h-[600px]">
+                <canvas id="esdCanvas" width="900" height="580" class="max-w-full h-auto rounded-lg"></canvas>
+                
+                <!-- Legend -->
+                <div class="absolute top-4 left-4 bg-slate-800/90 p-3 rounded-lg border border-slate-600 text-[10px] backdrop-blur text-slate-300 shadow-xl pointer-events-none z-10">
+                    <div class="font-bold text-white mb-2 border-b border-slate-600 pb-1">System Anatomy</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 bg-[#3b82f6]"></span> Hydraulic Fluid Line (Direct)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-4 h-1 bg-[#eab308]"></span> Electrical/Fiber Optic Line (MUX)</div>
+                    <div class="flex items-center gap-2 mb-1"><span class="w-3 h-3 bg-[#f97316]"></span> Subsea Accumulators (Bottles)</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 bg-[#0ea5e9]"></span> High Pressure Gas Flow</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('esdCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // System variables
+        let systemType = 'hydraulic'; // 'hydraulic' or 'mux'
+        let state = 'idle'; // idle, signal_traveling, valve_closing, secured
+        
+        // Time & Physics Scaling
+        // For visual effect, 1 simulated second = 1 real minute in 'hydraulic' mode
+        let simTime = 0; 
+        let escapedGas = 0;
+        let lastFrameTime = 0;
+        
+        let signalProgress = 0; // 0 to 1
+        let valvePosition = 1.0; // 1.0 = fully open, 0.0 = closed
+        
+        let flowParticles = [];
+        let animationId;
+
+        // Constants
+        const CX = canvas.width / 2;
+        const SURF_X = 150;
+        const SURF_Y = 150;
+        const SUBSEA_X = 750;
+        const SUBSEA_Y = 480;
+
+        // Umbilical path
+        const path = [
+            {x: SURF_X, y: SURF_Y + 50},
+            {x: SURF_X, y: 350},
+            {x: SUBSEA_X - 100, y: SUBSEA_Y - 70}, // Gaz borusuyla çakışmaması için yukarı alındı
+            {x: SUBSEA_X - 40, y: SUBSEA_Y - 70}  // SCM'ye (Sarı beyin) bağlanır
+        ];
+
+        function getPathLength() {
+            let len = 0;
+            for(let i=0; i<path.length-1; i++) {
+                len += Math.hypot(path[i+1].x - path[i].x, path[i+1].y - path[i].y);
+            }
+            return len;
+        }
+        const totalPathLength = getPathLength();
+
+        function getPointOnPath(progress) {
+            let targetDist = progress * totalPathLength;
+            let currentDist = 0;
+            
+            for(let i=0; i<path.length-1; i++) {
+                let dx = path[i+1].x - path[i].x;
+                let dy = path[i+1].y - path[i].y;
+                let segLen = Math.hypot(dx, dy);
+                
+                if (currentDist + segLen >= targetDist) {
+                    let ratio = (targetDist - currentDist) / segLen;
+                    return {
+                        x: path[i].x + dx * ratio,
+                        y: path[i].y + dy * ratio
+                    };
+                }
+                currentDist += segLen;
+            }
+            return path[path.length-1];
+        }
+
+        class GasParticle {
+            constructor() { this.reset(); }
+            reset() {
+                // Gaz deniz tabanının derinliklerinden (Rezervuardan) gelir
+                this.x = SUBSEA_X;
+                this.y = SUBSEA_Y + 120 + Math.random() * 80;
+                this.vx = 0;
+                this.vy = -(4 + Math.random() * 2);
+                this.active = true;
+            }
+            update() {
+                if (!this.active) return;
+
+                // Stop flow if valve is fully closed (Vana hizada mı kontrolü)
+                if (valvePosition <= 0.05 && this.y >= SUBSEA_Y - 20 && this.y <= SUBSEA_Y) {
+                    this.y = SUBSEA_Y;
+                    this.vy = 0;
+                    this.x += (Math.random() - 0.5) * 2; // jitter against closed valve
+                } else {
+                    this.y += this.vy;
+                    // Pipe routing: Ağaçtan çıkınca sola (Karaya) dön
+                    if (this.y < SUBSEA_Y - 40) {
+                        this.y = SUBSEA_Y - 40 + (Math.random() - 0.5)*4; // Boru içinde kal
+                        this.vy = 0;
+                        this.vx = -(5 + Math.random() * 3);
+                        this.x += this.vx;
+                    }
+                }
+                
+                // Out of bounds (Kıyıya ulaştı)
+                if (this.x < 0 || this.y < 0) {
+                    if (valvePosition > 0.05) this.reset(); // Only recycle if flowing
+                    else this.active = false;
+                }
+            }
+            draw() {
+                if (!this.active) return;
+                ctx.beginPath();
+                ctx.arc(this.x + (Math.random()-0.5)*10, this.y, 3, 0, Math.PI*2);
+                ctx.fillStyle = state === 'idle' ? '#0ea5e9' : '#ef4444'; // Turns red during emergency
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 100; i++) flowParticles.push(new GasParticle());
+
+        function setSystem(type) {
+            if (state !== 'idle') return; // Cannot change during active emergency
+            systemType = type;
+            document.querySelectorAll('.control-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + type).classList.add('active');
+        }
+
+        function triggerESD() {
+            if (state !== 'idle') return;
+            state = 'signal_traveling';
+            simTime = 0;
+            escapedGas = 0;
+            signalProgress = 0;
+            
+            document.getElementById('btn-esd').disabled = true;
+            
+            let status = document.getElementById('status-box');
+            status.className = "mt-4 bg-amber-900/40 border border-amber-500 p-3 rounded-lg text-sm text-amber-200 font-semibold text-center transition-all h-20 flex items-center justify-center animate-pulse";
+            status.innerHTML = "🚨 ESD INITIATED <br><span class='text-xs font-normal mt-1 block'>Signal sent from Onshore Master Control Station...</span>";
+        }
+
+        function resetSystem() {
+            state = 'idle';
+            simTime = 0;
+            escapedGas = 0;
+            signalProgress = 0;
+            valvePosition = 1.0;
+            
+            document.getElementById('btn-esd').disabled = false;
+            
+            document.getElementById('val-time').innerText = "00:00";
+            document.getElementById('val-time').className = "text-2xl font-mono font-bold text-amber-400";
+            document.getElementById('val-leak').innerText = "0";
+            
+            let status = document.getElementById('status-box');
+            status.className = "mt-4 bg-emerald-900/40 border border-emerald-500 p-3 rounded-lg text-sm text-emerald-200 font-semibold text-center transition-all h-20 flex items-center justify-center";
+            status.innerHTML = "NORMAL PRODUCTION <br><span class='text-xs font-normal mt-1 block'>Facility is operating safely. Master valves open.</span>";
+
+            flowParticles.forEach(p => p.reset());
+        }
+
+        function formatTime(seconds) {
+            let m = Math.floor(seconds / 60);
+            let s = Math.floor(seconds % 60);
+            return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+        }
+
+        function updatePhysics(dt) {
+            if (state === 'idle') return;
+
+            // In MUX, time is 1:1. In Hydraulic, time is simulated faster visually but numbers represent real minutes.
+            // Let's abstract: 1 visual second = 100 simulation units.
+            let timeMultiplier = systemType === 'hydraulic' ? 50 : 1; 
+            simTime += dt * timeMultiplier;
+
+            if (state === 'signal_traveling') {
+                // Hydraulic: Takes ~12 minutes (720s) to travel 170km due to hose ballooning.
+                // MUX: Takes 0.2 seconds (speed of light).
+                let signalTimeReq = systemType === 'hydraulic' ? 720 : 0.2;
+                signalProgress = simTime / signalTimeReq;
+
+                if (signalProgress >= 1.0) {
+                    signalProgress = 1.0;
+                    state = 'valve_closing';
+                    
+                    let status = document.getElementById('status-box');
+                    status.innerHTML = "⚠️ SIGNAL REACHED SUBSEA TREE <br><span class='text-xs font-normal mt-1 block'>Actuating master valve...</span>";
+                }
+            }
+            else if (state === 'valve_closing') {
+                // Hydraulic: Valve takes ~3 minutes (180s) to close (pushing 170km of fluid).
+                // MUX: Local accumulators dump instantly, valve closes in 15 seconds.
+                let closeTimeReq = systemType === 'hydraulic' ? 180 : 15;
+                let signalTimeReq = systemType === 'hydraulic' ? 720 : 0.2;
+                
+                let closeProgress = (simTime - signalTimeReq) / closeTimeReq;
+                valvePosition = 1.0 - closeProgress;
+
+                if (valvePosition <= 0) {
+                    valvePosition = 0;
+                    state = 'secured';
+                    
+                    let status = document.getElementById('status-box');
+                    status.className = "mt-4 bg-emerald-900/60 border border-emerald-500 p-3 rounded-lg text-sm text-emerald-200 font-semibold text-center transition-all h-20 flex items-center justify-center";
+                    status.innerHTML = "✅ WELL SECURED (SHUT-IN) <br><span class='text-xs font-normal mt-1 block'>Valves closed. Blowout prevented.</span>";
+                    document.getElementById('val-time').className = "text-2xl font-mono font-bold text-emerald-400";
+                }
+            }
+
+            // Calculate Gas Leakage
+            if (state !== 'secured') {
+                // Gas escapes at 50 m3/sec while fully open, restricted linearly as valve closes
+                let leakRate = 50 * valvePosition; 
+                escapedGas += leakRate * (dt * timeMultiplier);
+            }
+
+            // Update UI Dashboards
+            document.getElementById('val-time').innerText = formatTime(simTime);
+            document.getElementById('val-leak').innerText = (escapedGas / 1000).toFixed(1);
+        }
+
+        function drawScenery() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sky & Ocean
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, SURF_Y);
+            let grad = ctx.createLinearGradient(0, SURF_Y, 0, canvas.height);
+            grad.addColorStop(0, '#0284c7'); grad.addColorStop(1, '#020617');
+            ctx.fillStyle = grad; ctx.fillRect(0, SURF_Y, canvas.width, canvas.height - SURF_Y);
+
+            // Seabed
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath(); ctx.moveTo(0, canvas.height); ctx.lineTo(canvas.width, canvas.height); ctx.lineTo(canvas.width, SUBSEA_Y + 50); ctx.quadraticCurveTo(SUBSEA_X - 200, SUBSEA_Y + 70, 0, SUBSEA_Y); ctx.fill();
+
+            // Distance marker (170 km)
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 2; ctx.setLineDash([10, 10]);
+            ctx.beginPath(); ctx.moveTo(SURF_X, SURF_Y + 100); ctx.lineTo(SUBSEA_X, SURF_Y + 100); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = "bold 16px Arial"; ctx.textAlign="center";
+            ctx.fillText("⟵ 170 km Tie-Back Distance ⟶", (SURF_X + SUBSEA_X)/2, SURF_Y + 90);
+            ctx.textAlign="left";
+
+            // Onshore Master Control Station
+            ctx.fillStyle = '#475569'; ctx.fillRect(SURF_X - 50, SURF_Y - 40, 100, 40); // Base
+            ctx.fillStyle = '#64748b'; ctx.fillRect(SURF_X - 30, SURF_Y - 80, 60, 40); // Control Room
+            // Blinking light if ESD
+            if (state !== 'idle' && Math.floor(Date.now() / 250) % 2 === 0) {
+                ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(SURF_X, SURF_Y - 90, 8, 0, Math.PI*2); ctx.fill();
+                ctx.shadowBlur = 20; ctx.shadowColor = '#ef4444'; ctx.fill(); ctx.shadowBlur = 0;
+            } else {
+                ctx.fillStyle = '#94a3b8'; ctx.beginPath(); ctx.arc(SURF_X, SURF_Y - 90, 8, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.fillStyle = '#fff'; ctx.font="10px Arial"; ctx.fillText("Master Control", SURF_X - 35, SURF_Y - 100);
+        }
+
+        function drawUmbilical() {
+            // Draw Umbilical Base Line
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 12; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+            for(let i=1; i<path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+            ctx.stroke();
+            
+            // Umbilical Etiketi (Kordon anlamlandırması)
+            ctx.fillStyle = '#cbd5e1'; ctx.font = "11px Arial"; ctx.textAlign="center";
+            ctx.fillText("UMBILICAL CABLE", (SURF_X + SUBSEA_X)/2, SURF_Y + 230);
+            ctx.font = "9px Arial"; ctx.fillStyle = '#94a3b8';
+            ctx.fillText("(Power, Control, Chemicals)", (SURF_X + SUBSEA_X)/2, SURF_Y + 242);
+            ctx.textAlign="left";
+
+            // Draw Core Line (Blue for Hydraulic, Yellow for MUX)
+            let coreColor = systemType === 'hydraulic' ? '#3b82f6' : '#eab308';
+            ctx.strokeStyle = coreColor; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(path[0].x, path[0].y);
+            for(let i=1; i<path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+            ctx.stroke();
+
+            // Draw Signal Pulse
+            if (state === 'signal_traveling' || state === 'valve_closing') {
+                let p = getPointOnPath(signalProgress);
+                
+                if (systemType === 'hydraulic') {
+                    // Hydraulic pressure wave (swelling pulse)
+                    ctx.fillStyle = '#60a5fa';
+                    ctx.shadowBlur = 15; ctx.shadowColor = '#3b82f6';
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2); ctx.fill();
+                } else {
+                    // Electrical Zap (MUX)
+                    ctx.fillStyle = '#fef08a';
+                    ctx.shadowBlur = 20; ctx.shadowColor = '#facc15';
+                    ctx.beginPath();
+                    // Star/zap shape
+                    for(let j=0; j<5; j++) {
+                        let ang = (j * Math.PI * 2 / 5) + (Date.now()*0.01);
+                        ctx.lineTo(p.x + Math.cos(ang)*15, p.y + Math.sin(ang)*15);
+                        let ang2 = ang + (Math.PI / 5);
+                        ctx.lineTo(p.x + Math.cos(ang2)*5, p.y + Math.sin(ang2)*5);
+                    }
+                    ctx.fill();
+                }
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function drawSubseaTree() {
+            // Yeraltı Kuyu Borusu (Wellbore) - Gazın geldiği yer
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(SUBSEA_X - 15, SUBSEA_Y, 30, 150);
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(SUBSEA_X - 10, SUBSEA_Y, 20, 150);
+            ctx.fillStyle = '#cbd5e1'; ctx.font="10px Arial"; ctx.textAlign="center";
+            ctx.fillText("↓ REZERVUARDAN", SUBSEA_X, SUBSEA_Y + 140);
+            ctx.textAlign="left";
+
+            // Subsea Tree Base
+            ctx.fillStyle = '#475569'; ctx.fillRect(SUBSEA_X - 40, SUBSEA_Y - 20, 80, 50);
+            
+            // Production Flowline out (Karaya giden boru) - Ekranın soluna kadar uzatıldı
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, SUBSEA_Y - 50, SUBSEA_X - 40, 20);
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(0, SUBSEA_Y - 45, SUBSEA_X - 40, 10);
+            
+            // Akış yönü oku
+            ctx.fillStyle = '#38bdf8'; ctx.font="bold 11px Arial";
+            ctx.fillText("← KARAYA (ONSHORE FACILITY) UZANAN ANA BORU HATTI", 20, SUBSEA_Y - 60);
+
+            // SCM (Subsea Control Module)
+            ctx.fillStyle = '#facc15'; ctx.fillRect(SUBSEA_X - 40, SUBSEA_Y - 80, 30, 40);
+            ctx.fillStyle = '#000'; ctx.font="bold 10px Arial"; ctx.fillText("SCM", SUBSEA_X - 35, SUBSEA_Y - 60);
+            ctx.fillStyle = '#fff'; ctx.font="9px Arial"; ctx.fillText("(Ağaç Beyni)", SUBSEA_X - 45, SUBSEA_Y - 90);
+
+            // Subsea Accumulators (Bottles) - ONLY visible/active in MUX mode
+            if (systemType === 'mux') {
+                let opacity = 1.0;
+                // Accumulators empty (fade) when valve closes
+                if (state === 'valve_closing') opacity = valvePosition;
+                if (state === 'secured') opacity = 0.2;
+
+                ctx.fillStyle = `rgba(249, 115, 22, ${opacity})`; // Orange bottles
+                ctx.fillRect(SUBSEA_X + 20, SUBSEA_Y - 80, 15, 40);
+                ctx.fillRect(SUBSEA_X + 45, SUBSEA_Y - 80, 15, 40);
+                ctx.beginPath(); ctx.arc(SUBSEA_X + 27.5, SUBSEA_Y - 80, 7.5, 0, Math.PI, true); ctx.fill();
+                ctx.beginPath(); ctx.arc(SUBSEA_X + 52.5, SUBSEA_Y - 80, 7.5, 0, Math.PI, true); ctx.fill();
+                
+                // Connecting pipes to valve
+                ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(SUBSEA_X + 27.5, SUBSEA_Y - 40); ctx.lineTo(SUBSEA_X + 27.5, SUBSEA_Y - 10); ctx.lineTo(SUBSEA_X, SUBSEA_Y - 10); ctx.stroke();
+            }
+
+            // Master Valve (Gate Valve)
+            ctx.fillStyle = '#334155'; ctx.fillRect(SUBSEA_X - 30, SUBSEA_Y - 20, 60, 20); // Valve body
+            
+            // Gate (Moves to block flow)
+            let gateX = SUBSEA_X - 30 + (1 - valvePosition) * 30; // Slides in from left
+            ctx.fillStyle = '#ef4444'; 
+            ctx.fillRect(gateX, SUBSEA_Y - 18, 30, 16);
+            ctx.fillStyle = '#fff'; ctx.font="9px Arial"; ctx.fillText("VALVE", gateX+2, SUBSEA_Y - 5);
+        }
+
+        function animate(timestamp) {
+            let dt = (timestamp - lastFrameTime) / 1000;
+            if (dt > 0.1) dt = 0.1; // Cap dt for lag spikes
+            lastFrameTime = timestamp;
+
+            updatePhysics(dt);
+
+            drawScenery();
+            drawUmbilical();
+            drawSubseaTree();
+
+            // Draw Gas Flow
+            flowParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // Start Loop
+        lastFrameTime = performance.now();
+        requestAnimationFrame(animate);
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Production Allocation & Back Allocation System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .data-table th { background-color: #1e293b; color: #94a3b8; font-weight: 600; text-transform: uppercase; padding: 10px; border-bottom: 2px solid #334155; text-align: left; }
+        .data-table td { padding: 10px; border-bottom: 1px solid #1e293b; background-color: rgba(15, 23, 42, 0.5); }
+        .data-table tr:hover td { background-color: rgba(30, 41, 59, 0.8); }
+        
+        .well-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-family: monospace; font-size: 11px; }
+        .badge-z1 { background-color: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0ea5e9; } /* Sky */
+        .badge-z2 { background-color: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; } /* Emerald */
+        
+        canvas { background-color: #1e293b; border-radius: 0.5rem; border: 1px solid #334155; box-shadow: inset 0 0 20px rgba(0,0,0,0.5); }
+        .control-btn { transition: all 0.2s; }
+        .control-btn:active { transform: scale(0.95); }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="min-h-screen p-4 flex flex-col items-center">
+
+    <div class="max-w-[1400px] w-full">
+        <header class="mb-4 text-center border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-sky-400 mb-2">Back Allocation System & Fiscal Metering</h1>
+            <p class="text-slate-400 text-sm">Distributing Commingled Fiscal Gas Sales back to Individual Wells & Reservoirs</p>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Top/Left Panel: The Problem & Fiscal Data -->
+            <div class="xl:col-span-4 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 p-5 rounded-xl border border-sky-900 shadow-xl flex flex-col h-full">
+                    <h2 class="text-sm font-bold text-sky-400 uppercase tracking-widest mb-3 border-b border-sky-900 pb-2 flex items-center justify-between">
+                        <span>1. The Fiscal Sale</span>
+                        <span class="text-xs bg-sky-900 text-sky-200 px-2 py-1 rounded">BOTAŞ Network</span>
+                    </h2>
+                    
+                    <p class="text-xs text-slate-300 mb-4 leading-relaxed">
+                        At the end of the month, the highly accurate ultrasonic meter at the facility exit measures the total gas sold. 
+                        <strong>Problem:</strong> 6 wells from 2 different reservoirs are commingled. How do we distribute the revenue fairly and accurately track reservoir depletion?
+                    </p>
+
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 text-center mt-auto">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Total Commingled Gas Sold (Monthly)</div>
+                        <div class="text-4xl font-mono font-bold text-sky-400" id="total-sold">1,850.00</div>
+                        <div class="text-xs text-slate-500 mt-1">MMscf</div>
+                        
+                        <div class="mt-4 pt-4 border-t border-slate-700 flex justify-between items-center text-xs">
+                            <span class="text-slate-400">Sum of Well Tests (Theoretical):</span>
+                            <span class="font-mono text-amber-400" id="theoretical-sum">1,925.50 MMscf</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[10px] mt-1">
+                            <span class="text-slate-500">Allocation Factor (AF) = Actual / Theoretical:</span>
+                            <span class="font-mono text-emerald-400 bg-emerald-900/30 px-1 rounded" id="alloc-factor">0.9607</span>
+                        </div>
+                    </div>
+
+                    <button onclick="runNewMonth()" class="control-btn w-full mt-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-bold shadow-lg border border-slate-500 text-sm">
+                        🔄 Simulate Next Month
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- Middle Panel: Well Test Data & Allocation Table -->
+            <div class="xl:col-span-8 flex flex-col gap-4">
+                
+                <div class="bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden flex flex-col h-full">
+                    <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest p-4 border-b border-slate-700 bg-slate-800/80">
+                        2. Well Test Data & Back Allocation Table
+                    </h2>
+                    
+                    <div class="overflow-x-auto custom-scrollbar flex-1">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Well ID</th>
+                                    <th>Reservoir</th>
+                                    <th title="Latest test rate">Test Rate<br><span class="text-[10px] font-normal text-slate-500">(MMscfd)</span></th>
+                                    <th title="Days producing this month">Uptime<br><span class="text-[10px] font-normal text-slate-500">(Days)</span></th>
+                                    <th title="Test Rate * Uptime">Theoretical Vol<br><span class="text-[10px] font-normal text-slate-500">(MMscf)</span></th>
+                                    <th title="Theoretical * Allocation Factor" class="text-sky-300">Allocated Vol<br><span class="text-[10px] font-normal text-sky-800/50">(MMscf)</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="allocation-body">
+                                <!-- Data injected via JS -->
+                            </tbody>
+                            <tfoot>
+                                <tr class="bg-slate-900 border-t-2 border-slate-600 font-bold">
+                                    <td colspan="4" class="text-right text-slate-400 uppercase text-xs">Total:</td>
+                                    <td id="table-theoretical-sum" class="font-mono text-amber-400">0.00</td>
+                                    <td id="table-actual-sum" class="font-mono text-sky-400">0.00</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom Panel: Visualizations -->
+            <div class="xl:col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                <!-- Sankey Diagram (Conceptual Canvas) -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 relative overflow-hidden h-[300px]">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest absolute top-4 left-4 z-10">Flow Diagram</h3>
+                    <canvas id="flowCanvas" width="600" height="300" class="w-full h-full object-contain"></canvas>
+                </div>
+
+                <!-- Reservoir Depletion Chart -->
+                <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 relative h-[300px]">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest absolute top-4 left-4 z-10">Reservoir Depletion Tracking (Monthly)</h3>
+                    
+                    <div class="absolute top-4 right-4 flex gap-4 text-[10px]">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 bg-sky-500 rounded-sm"></span> Tuna (Deep)</div>
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-500 rounded-sm"></span> Amasra (Shallow)</div>
+                    </div>
+
+                    <canvas id="barCanvas" width="600" height="250" class="w-full h-full pt-8"></canvas>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const flowCanvas = document.getElementById('flowCanvas');
+        const fCtx = flowCanvas.getContext('2d');
+        const barCanvas = document.getElementById('barCanvas');
+        const bCtx = barCanvas.getContext('2d');
+
+        // Well Database
+        const wells = [
+            { id: 'TUNA-1', zone: 'Tuna (Deep)', class: 'badge-z1', testBase: 15.5 },
+            { id: 'TUNA-2', zone: 'Tuna (Deep)', class: 'badge-z1', testBase: 12.0 },
+            { id: 'TUNA-3', zone: 'Tuna (Deep)', class: 'badge-z1', testBase: 8.5 },
+            { id: 'TUNA-4', zone: 'Tuna (Deep)', class: 'badge-z1', testBase: 18.0 },
+            { id: 'AMASRA-1', zone: 'Amasra (Shallow)', class: 'badge-z2', testBase: 5.5 },
+            { id: 'AMASRA-2', zone: 'Amasra (Shallow)', class: 'badge-z2', testBase: 4.2 }
+        ];
+
+        let currentData = [];
+        let monthCounter = 0;
+        
+        // History for bar chart
+        let historyTuna = [];
+        let historyAmasra = [];
+
+        function generateMonthData() {
+            monthCounter++;
+            let daysInMonth = 30;
+            
+            // Fluctuate test rates slightly, simulate decline over time
+            let declineFactor = 1 - (monthCounter * 0.015); 
+            
+            let theoreticalTotal = 0;
+            let newData = [];
+
+            wells.forEach(w => {
+                // Fluctuate test rate
+                let currentTest = (w.testBase * declineFactor) * (0.9 + Math.random() * 0.2);
+                
+                // Random uptime (chokes closed, maintenance, etc.)
+                let uptime = daysInMonth;
+                if (Math.random() > 0.7) uptime = daysInMonth - Math.floor(Math.random() * 10);
+                if (Math.random() > 0.95) uptime = 0; // Well shut-in
+
+                let theoreticalVol = currentTest * uptime;
+                theoreticalTotal += theoreticalVol;
+
+                newData.push({
+                    id: w.id,
+                    zone: w.zone,
+                    badge: w.class,
+                    testRate: currentTest,
+                    uptime: uptime,
+                    theoVol: theoreticalVol,
+                    allocVol: 0 // Calculated later
+                });
+            });
+
+            // The Fiscal Meter is accurate, but differs from sum of tests due to:
+            // 1. Line pack (inventory in pipe)
+            // 2. Choke adjustments between tests
+            // 3. Flaring / Fuel gas usage
+            // 4. Shrinkage
+            
+            // Realistic fiscal sales is usually 90-98% of theoretical (shrinkage/fuel/errors)
+            let allocationFactor = 0.90 + Math.random() * 0.08;
+            let actualSold = theoreticalTotal * allocationFactor;
+
+            // Perform Back Allocation
+            let allocatedSum = 0;
+            let tunaSum = 0;
+            let amasraSum = 0;
+
+            newData.forEach(d => {
+                d.allocVol = d.theoVol * allocationFactor;
+                allocatedSum += d.allocVol;
+                
+                if (d.zone.includes('Tuna')) tunaSum += d.allocVol;
+                if (d.zone.includes('Amasra')) amasraSum += d.allocVol;
+            });
+
+            historyTuna.push(tunaSum);
+            historyAmasra.push(amasraSum);
+            if (historyTuna.length > 6) {
+                historyTuna.shift();
+                historyAmasra.shift();
+            }
+
+            currentData = newData;
+            updateUI(actualSold, theoreticalTotal, allocationFactor);
+            drawFlow();
+            drawBarChart();
+        }
+
+        function updateUI(actualSold, theoTotal, af) {
+            document.getElementById('total-sold').innerText = actualSold.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('theoretical-sum').innerText = theoTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " MMscf";
+            document.getElementById('alloc-factor').innerText = af.toFixed(4);
+            
+            document.getElementById('table-theoretical-sum').innerText = theoTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('table-actual-sum').innerText = actualSold.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            const tbody = document.getElementById('allocation-body');
+            tbody.innerHTML = currentData.map(d => `
+                <tr>
+                    <td class="font-mono text-white font-bold">${d.id}</td>
+                    <td><span class="well-badge ${d.badge}">${d.zone}</span></td>
+                    <td class="font-mono text-slate-300">${d.testRate.toFixed(2)}</td>
+                    <td class="font-mono text-slate-300">${d.uptime}</td>
+                    <td class="font-mono text-amber-400">${d.theoVol.toFixed(2)}</td>
+                    <td class="font-mono text-sky-400 font-bold bg-sky-900/20">${d.allocVol.toFixed(2)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function drawFlow() {
+            fCtx.clearRect(0,0, flowCanvas.width, flowCanvas.height);
+            
+            const W = flowCanvas.width;
+            const H = flowCanvas.height;
+            
+            // Draw Tanks/Nodes
+            fCtx.fillStyle = '#0ea5e9'; // Sky
+            fCtx.beginPath(); fCtx.roundRect(50, 40, 60, 100, 8); fCtx.fill();
+            fCtx.fillStyle = '#10b981'; // Emerald
+            fCtx.beginPath(); fCtx.roundRect(50, 180, 60, 60, 8); fCtx.fill();
+            
+            fCtx.fillStyle = '#475569';
+            fCtx.fillRect(W/2 - 20, 40, 40, 200); // Manifold
+            
+            fCtx.fillStyle = '#b91c1c'; // Sales meter
+            fCtx.fillRect(W - 100, 110, 40, 60);
+
+            // Lines & Text
+            fCtx.lineWidth = 10;
+            fCtx.lineCap = 'round';
+            fCtx.lineJoin = 'round';
+            
+            let tunaVol = currentData.filter(d=>d.zone.includes('Tuna')).reduce((sum,d)=>sum+d.allocVol, 0);
+            let amasVol = currentData.filter(d=>d.zone.includes('Amasra')).reduce((sum,d)=>sum+d.allocVol, 0);
+            let totVol = tunaVol + amasVol;
+
+            // Tuna to Manifold
+            fCtx.strokeStyle = 'rgba(14, 165, 233, 0.5)';
+            fCtx.lineWidth = Math.max(4, (tunaVol/totVol) * 40);
+            fCtx.beginPath(); fCtx.moveTo(110, 90); fCtx.bezierCurveTo(200, 90, 200, 120, W/2 - 20, 120); fCtx.stroke();
+            
+            // Amasra to Manifold
+            fCtx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+            fCtx.lineWidth = Math.max(4, (amasVol/totVol) * 40);
+            fCtx.beginPath(); fCtx.moveTo(110, 210); fCtx.bezierCurveTo(200, 210, 200, 160, W/2 - 20, 160); fCtx.stroke();
+
+            // Manifold to Sales
+            fCtx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+            fCtx.lineWidth = 40; // Total
+            fCtx.beginPath(); fCtx.moveTo(W/2 + 20, 140); fCtx.lineTo(W - 100, 140); fCtx.stroke();
+            
+            // Labels
+            fCtx.fillStyle = '#fff'; fCtx.font = "bold 12px Arial"; fCtx.textAlign = 'center';
+            fCtx.fillText("TUNA", 80, 90);
+            fCtx.fillText("AMASRA", 80, 215);
+            fCtx.fillText("MANIFOLD", W/2, 145);
+            fCtx.font = "10px Arial";
+            fCtx.fillText("FISCAL METER", W - 80, 145);
+            
+            fCtx.fillStyle = '#cbd5e1'; fCtx.textAlign = 'left';
+            fCtx.fillText(tunaVol.toFixed(0) + " MMscf", 120, 80);
+            fCtx.fillText(amasVol.toFixed(0) + " MMscf", 120, 200);
+            fCtx.font = "bold 14px Arial";
+            fCtx.fillText(totVol.toFixed(0) + " MMscf SOLD", W/2 + 30, 120);
+        }
+
+        function drawBarChart() {
+            bCtx.clearRect(0,0, barCanvas.width, barCanvas.height);
+            if (historyTuna.length === 0) return;
+
+            const padL = 40; const padB = 30; const padT = 10;
+            const W = barCanvas.width - padL - 10;
+            const H = barCanvas.height - padB - padT;
+            
+            let maxVol = 0;
+            for(let i=0; i<historyTuna.length; i++) {
+                if (historyTuna[i] + historyAmasra[i] > maxVol) maxVol = historyTuna[i] + historyAmasra[i];
+            }
+            if (maxVol === 0) maxVol = 1000; // fallback
+            maxVol *= 1.2; // Headroom
+
+            // Grid
+            bCtx.strokeStyle = '#334155'; bCtx.lineWidth = 1;
+            bCtx.fillStyle = '#94a3b8'; bCtx.font = "10px Arial"; bCtx.textAlign = "right";
+            for(let i=0; i<=4; i++) {
+                let y = padT + H - (i/4)*H;
+                bCtx.beginPath(); bCtx.moveTo(padL, y); bCtx.lineTo(padL + W, y); bCtx.stroke();
+                bCtx.fillText(Math.floor((i/4)*maxVol), padL - 5, y + 4);
+            }
+            bCtx.beginPath(); bCtx.moveTo(padL, padT); bCtx.lineTo(padL, padT + H); bCtx.stroke(); // Y Axis
+            
+            // Bars
+            let barW = (W / 6) * 0.6;
+            let spacing = (W / 6);
+            
+            for(let i=0; i<historyTuna.length; i++) {
+                let x = padL + (i + 0.5) * spacing - barW/2;
+                let tVol = historyTuna[i];
+                let aVol = historyAmasra[i];
+                
+                let tH = (tVol / maxVol) * H;
+                let aH = (aVol / maxVol) * H;
+
+                // Tuna Bar (Bottom)
+                bCtx.fillStyle = '#0ea5e9'; // Sky
+                bCtx.fillRect(x, padT + H - tH, barW, tH);
+                
+                // Amasra Bar (Stacked on top)
+                bCtx.fillStyle = '#10b981'; // Emerald
+                bCtx.fillRect(x, padT + H - tH - aH, barW, aH);
+                
+                // X Label
+                bCtx.fillStyle = '#cbd5e1'; bCtx.textAlign = 'center';
+                bCtx.fillText("M-" + (monthCounter - historyTuna.length + i + 1), x + barW/2, padT + H + 15);
+            }
+        }
+
+        function runNewMonth() {
+            generateMonthData();
+        }
+
+        // Init
+        runNewMonth();
+
+    </script>
+</body>
+</html>
