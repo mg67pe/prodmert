@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>National Energy Infrastructure Atlas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-screen w-screen bg-slate-950 flex flex-col items-center justify-center relative">
+    
+    <!-- Transition Button to Dashboard -->
+    <a href="dashboard.html" class="absolute top-6 right-6 px-6 py-3 bg-sky-600 text-white font-bold rounded-full shadow-[0_0_20px_rgba(2,132,199,0.6)] hover:bg-sky-500 hover:scale-105 transition transform flex items-center gap-2 z-50 border border-sky-400">
+        <span>⚙️</span> Go to Engineering Dashboard
+    </a>
+
+    <div class="text-center mb-6 mt-4 z-10 bg-slate-900/80 p-4 rounded-xl border border-slate-700 backdrop-blur">
+        <h1 class="text-4xl font-bold text-sky-400 uppercase tracking-widest">National Energy Infrastructure Atlas</h1>
+        <p class="text-slate-400 mt-2 text-sm">Strategic Upstream, Midstream and Downstream Operations Monitoring Center</p>
+    </div>
+
+    <!-- The Map Frame -->
+    <div class="w-full max-w-[1500px] h-[80%] flex-1 relative z-0">
+        <iframe src="t_rkiye_enerji_haritas.html" class="w-full h-full border-none rounded-xl shadow-2xl"></iframe>
+    </div>
+
+    <div class="mt-4 text-xs text-slate-500 mb-4">
+        Interactive Simulation & Digital Twin Platform © 2026
+    </div>
+
+</body>
+</html>

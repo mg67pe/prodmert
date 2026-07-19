@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engineering Dashboard - Petroleum Systems</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        .nav-btn { transition: all 0.2s; border-left: 4px solid transparent; }
+        .nav-btn.active { background-color: #1e293b; border-left-color: #38bdf8; color: #38bdf8; font-weight: bold; box-shadow: inset 0 0 10px rgba(0,0,0,0.3); }
+        .nav-btn:hover:not(.active) { background-color: #334155; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen w-screen flex bg-slate-900">
+
+    <div class="w-80 bg-slate-800 border-r border-slate-700 flex flex-col h-full shadow-2xl z-10 flex-shrink-0">
+        <div class="p-5 border-b border-slate-700 bg-slate-900/30 flex justify-between items-center">
+            <h1 class="text-lg font-bold text-sky-400">Engineering Dashboard</h1>
+            <a href="index.html" class="text-xs bg-slate-700 p-2 rounded text-white hover:bg-slate-600 transition">🏠 Map</a>
+        </div>
+
+        <div class="flex-1 overflow-y-auto custom-scrollbar py-2 px-2 flex flex-col gap-1">
+            
+            <!-- 1. Kuyu Mimarisi ve Ekipman Atlası -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-3 px-3 flex items-center gap-2">📖 Encyclopedia & Architectures</div>
+            <button onclick="loadSim('kuyu_mimarisi_ve_ekipman_ansiklopedisi.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-amber-400 w-full font-bold">Equipment Encyclopedia</button>
+            <button onclick="loadSim('well_tubulars_equipment_deployment.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Well Tubulars & Equipment</button>
+            <button onclick="loadSim('t_rkiye_enerji_haritas.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Turkey Energy Map</button>
+
+            <!-- 2. Drilling Operations -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🏗️ Drilling Operations</div>
+            <button onclick="loadSim('aktif_sondaj_ve_amur_d_ng_s.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Active Drilling & Mud</button>
+            <button onclick="loadSim('directional_drilling_geosteering.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Geosteering Simulator</button>
+            <button onclick="loadSim('directional_drilling.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Directional Drilling</button>
+            <button onclick="loadSim('offshore_mud_window_casing_design.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Offshore Mud Window & Casing</button>
+            <button onclick="loadSim('primary_cementing_operations.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Primary Cementing</button>
+            
+            <!-- 3. Well Control & Interventions -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🚨 Well Control & Interventions</div>
+            <button onclick="loadSim('kuyu_kontrol_kick.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Well Control (Kick)</button>
+            <button onclick="loadSim('bop_ve_emniyet_vanalar_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">BOP & Safety Valves</button>
+            <button onclick="loadSim('sssv_subsurface_safety_valve.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">SSSV Mechanics</button>
+            <button onclick="loadSim('well_intervention_workover_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Intervention & Workover</button>
+            <button onclick="loadSim('plug_abandonment.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Plug & Abandonment (P&A)</button>
+            
+            <!-- 4. Completions & Stimulation -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🚀 Completions & Stimulation</div>
+            <button onclick="loadSim('kuyu_tamamlama_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Well Completion Simulator</button>
+            <button onclick="loadSim('sand_control_gravel_pack.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Sand Control & Gravel Pack</button>
+            <button onclick="loadSim('sand_control_dashboard.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Sand Control Dashboard</button>
+            <button onclick="loadSim('matris_asitleme.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Matrix Acidizing</button>
+            <button onclick="loadSim('skin_evolution_matrix_acidizing.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Skin Evolution & Acidizing</button>
+            <button onclick="loadSim('hidrolik_atlatma.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Hydraulic Fracturing</button>
+
+            <!-- 5. Artificial Lift Systems -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">⚙️ Artificial Lift</div>
+            <button onclick="loadSim('gas_lift_yapay_kald_rma_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Gas Lift Dynamics</button>
+            <button onclick="loadSim('plunger_lift_cycle_dynamics_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Plunger Lift Dynamics</button>
+            <button onclick="loadSim('esp_pompa_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">ESP Systems</button>
+            <button onclick="loadSim('srp_prensibi.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Sucker Rod Pump (SRP)</button>
+
+            <!-- 6. Production Optimization & Well Integrity -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">📈 Production & Integrity</div>
+            <button onclick="loadSim('nodal_analiz_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Nodal Analysis</button>
+            <button onclick="loadSim('liquid_loading_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Liquid Loading</button>
+            <button onclick="loadSim('flow_regimes_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Flow Regimes</button>
+            <button onclick="loadSim('smart_well_icv_water_shutoff.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Smart Well (ICV) Water Shutoff</button>
+            <button onclick="loadSim('tubing_movement_packer_forces.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Tubing Movement & Packer Forces</button>
+            <button onclick="loadSim('sustained_casing_pressure_scp.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Sustained Casing Pressure (SCP)</button>
+            <button onclick="loadSim('turbidite_sand_erosion_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Turbidite Sand Erosion</button>
+
+            <!-- 7. Reservoir & Petrophysics -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">📊 Reservoir & Petrophysics</div>
+            <button onclick="loadSim('petrofizik_ve_kuyu_loglar.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Well Logging & Petrophysics</button>
+            <button onclick="loadSim('kuyu_testi_pta.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Well Testing (PTA)</button>
+            <button onclick="loadSim('pvt_faz_zarfi.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">PVT Phase Envelope</button>
+            <button onclick="loadSim('phase_envelope_dashboard.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Phase Envelope Dashboard</button>
+            <button onclick="loadSim('z_factor.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Z-Factor Calculator</button>
+            
+            <!-- 8. Reservoir Engineering & Economics -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">💰 Reservoir Eng. & Economics</div>
+            <button onclick="loadSim('rezervuar_materyal_dengesi_dca_dashboard.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Material Balance & DCA</button>
+            <button onclick="loadSim('pz_material_balance_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">P/Z Material Balance</button>
+            <button onclick="loadSim('monte_carlo_volumetrics.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Monte Carlo Volumetrics</button>
+            <button onclick="loadSim('spe_prms_reserves.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">SPE-PRMS Reserves</button>
+            <button onclick="loadSim('fdp_economics_dashboard.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">FDP Economics Dashboard</button>
+            <button onclick="loadSim('late_life_depletion_compression.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Late Life Depletion & Comp.</button>
+
+            <!-- 9. Field Development & Subsea Networks -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🌐 Field Dev. & Networks</div>
+            <button onclick="loadSim('denizalt_sistemleri_geli_mi_kusursuz_rota.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Subsea Production Systems</button>
+            <button onclick="loadSim('phased_subsea_network_expansion.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Phased Subsea Expansion</button>
+            <button onclick="loadSim('subsea_network_backpressure_optimization.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Network Backpressure Opt.</button>
+            <button onclick="loadSim('stacked_reservoirs_commingled_production.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Commingled Production</button>
+            <button onclick="loadSim('production_allocation_dashboard.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Production Allocation</button>
+            <button onclick="loadSim('virtual_flow_meter_vfm.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Virtual Flow Meter (VFM)</button>
+            <button onclick="loadSim('170km_subsea_esd_mux_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">170km Subsea ESD & MUX</button>
+
+            <!-- 10. Flow Assurance & Pipelines -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🧊 Flow Assurance & Pipelines</div>
+            <button onclick="loadSim('hidrat_faz_diyagrami.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Hydrates Phase Diagram</button>
+            <button onclick="loadSim('hydrate_flow_assurance_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Hydrate Flow Assurance</button>
+            <button onclick="loadSim('choke_ve_joule_thomson_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Choke & Joule-Thomson</button>
+            <button onclick="loadSim('choke_valve_meg_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Choke Valve & MEG Injection</button>
+            <button onclick="loadSim('meg_dongusu.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">MEG Closed Loop Cycle</button>
+            <button onclick="loadSim('meg_regeneration_salt_precipitation.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">MEG Regen & Salt Precip.</button>
+            <button onclick="loadSim('transient_slugging_slug_catcher.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Transient Slugging</button>
+            <button onclick="loadSim('pigging_operasyonu.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Pigging Operations</button>
+            <button onclick="loadSim('ili_smart_pigging_corrosion.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">ILI Smart Pigging (Corrosion)</button>
+            <button onclick="loadSim('riser_viv_fatigue_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Riser VIV & Fatigue</button>
+
+            <!-- 11. Surface Processing & Facilities -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🏭 Surface Processing Facilities</div>
+            <button onclick="loadSim('gazin_yolculugu.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Gas Journey (Overview)</button>
+            <button onclick="loadSim('fpu_topside_flow_assurance.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">FPU Topside Processing</button>
+            <button onclick="loadSim('filyos_gaz_isleme_fsru_terminal_simulatoru.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Filyos Plant & FSRU Terminal</button>
+            <button onclick="loadSim('horizontal_separator_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">3-Phase Horizontal Separator</button>
+            <button onclick="loadSim('denizalt_gaz_s_v_ayr_t_rma.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Subsea Gas/Liquid Separation</button>
+            <button onclick="loadSim('teg_dehydration_tower_dynamics.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">TEG Dehydration Tower</button>
+            <button onclick="loadSim('amine_sweetening_agru.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Amine Sweetening (AGRU)</button>
+            <button onclick="loadSim('christmas_tree_scada_sim.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Christmas Tree SCADA</button>
+
+            <!-- 12. EOR & Additional Simulation Models -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">💧 EOR & Aquifer Dynamics</div>
+            <button onclick="loadSim('su_konilesmesi.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Water Coning</button>
+            <button onclick="loadSim('buckley_leverett_simulator.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Buckley-Leverett Displ.</button>
+            <button onclick="loadSim('ugs_yeraltı_dogalgaz_depolama_simulatoru.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">UGS Gas Storage</button>
+
+            <!-- 13. Environmental & Safety -->
+            <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 mt-4 px-3 flex items-center gap-2">🛡️ Environmental & Safety</div>
+            <button onclick="loadSim('subsea_blowout_plume_dispersion.html', this)" class="nav-btn text-left px-4 py-2 rounded-lg text-sm text-slate-300 w-full">Blowout Plume Dispersion</button>
+
+            <div class="mt-8 border-t border-slate-700"></div>
+            <button onclick="loadSim('dokumantasyon.html', this)" class="nav-btn text-left px-4 py-4 rounded-lg text-sm text-emerald-400 w-full flex items-center gap-2 bg-emerald-900/10 hover:bg-emerald-900/30 border border-emerald-900/50 mt-2 font-bold">
+                <span>📚</span> Documentation
+            </button>
+            
+            <div class="pb-10"></div>
+        </div>
+    </div>
+
+    <div class="flex-1 h-full relative">
+        <iframe id="sim-frame" src="t_rkiye_enerji_haritas.html" class="w-full h-full border-none"></iframe>
+    </div>
+
+    <script>
+        function loadSim(url, btnElement) {
+            document.getElementById('sim-frame').src = url;
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            btnElement.classList.add('active');
+        }
+    </script>
+</body>
+</html>
